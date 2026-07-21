@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { Alert, Button, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
+import { Alert, Button, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getDb } from '../../db/schema';
 import {
@@ -16,6 +17,12 @@ import { checkWatchlistAndNotify } from '../../notifications/run-check';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Watchlist'>;
+
+const appVersion = Constants.expoConfig?.version ?? '';
+const buildNumber =
+  Platform.OS === 'ios'
+    ? Constants.expoConfig?.ios?.buildNumber
+    : String(Constants.expoConfig?.android?.versionCode ?? '');
 
 export default function WatchlistScreen({ navigation }: Props): React.JSX.Element {
   const [items, setItems] = useState<WatchlistItem[]>([]);
@@ -130,6 +137,10 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
           onPress={() => navigation.navigate('WatchlistForm', {})}
           disabled={!canAddMore}
         />
+        <Text style={styles.versionText}>
+          v{appVersion}
+          {buildNumber ? ` (${buildNumber})` : ''}
+        </Text>
       </View>
     </View>
   );
@@ -185,5 +196,11 @@ const styles = StyleSheet.create({
   },
   footer: {
     padding: 16,
+  },
+  versionText: {
+    textAlign: 'center',
+    color: '#aaa',
+    fontSize: 12,
+    marginTop: 8,
   },
 });
