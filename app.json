@@ -2,18 +2,18 @@
   "expo": {
     "name": "SmileStock",
     "slug": "smilestock",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "8",
+      "buildNumber": "9",
       "bundleIdentifier": "com.anonymous.smilestock",
       "appleTeamId": "RW3X6JFDJQ"
     },
     "android": {
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

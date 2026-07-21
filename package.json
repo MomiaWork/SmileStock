@@ -1,6 +1,6 @@
 {
   "name": "smilestock",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "main": "index.ts",
   "dependencies": {
     "@react-navigation/native": "^7.3.13",
