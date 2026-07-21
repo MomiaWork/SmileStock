@@ -2,6 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import { Alert, Button, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { backfillPriceHistory } from '../../data-fetch/price-history-sync';
 import { getDb } from '../../db/schema';
 import {
   addWatchlistItem,
@@ -117,6 +118,16 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       const id = isEditing ? watchlistId : await addWatchlistItem(db, watchlistPayload);
       if (isEditing) {
         await updateWatchlistItem(db, watchlistId, watchlistPayload);
+      } else {
+        try {
+          await backfillPriceHistory(db, watchlistPayload.stockCode);
+        } catch (err) {
+          // 回補歷史資料失敗不擋新增股票，之後每日同步仍會逐筆累積
+          Alert.alert(
+            '歷史資料回補失敗',
+            `${err instanceof Error ? err.message : String(err)}\n\nRSI/均線策略要等資料累積足夠天數才會開始判斷，稍後可再手動同步。`,
+          );
+        }
       }
 
       const configs: { type: 'grid' | 'rsi' | 'ma_cross'; params: unknown; enabled: boolean }[] =
