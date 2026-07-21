@@ -22,6 +22,7 @@ import type { PricePoint } from '../../strategy-engine/types';
 import {
   buildExportSummary,
   buildRunShortcutUrl,
+  formatClaudePromptText,
   formatExportJson,
   formatExportText,
   type StockExportSummary,
