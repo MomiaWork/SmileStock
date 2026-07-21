@@ -115,6 +115,24 @@ export async function shareStrategyExport(db: SQLiteDatabase): Promise<void> {
 }
 
 /**
+ * 給 Claude 的提示詞開頭。由 App 端直接包進匯出文字，捷徑內不需要再組提示詞；
+ * 要求純文字回覆，捷徑用「顯示結果」就能直接讀，不需要 Markdown 轉 RTF。
+ */
+const CLAUDE_PROMPT_HEADER = [
+  '你是台股投資顧問。以下是我的持股策略狀態，請針對每檔股票給出「今日建議動作」與理由，最後給整體資產配置提醒。',
+  '回覆請用純文字，不要使用任何 Markdown 符號（不要 ** 與 ##），用換行與「•」條列，每檔股票之間空一行，回覆精簡。',
+  '',
+].join('\n');
+
+/** 提示詞 + 策略數據，給「一鍵執行 Claude 捷徑」用的完整訊息 */
+export function formatClaudePromptText(
+  summaries: StockExportSummary[],
+  generatedAt: Date = new Date(),
+): string {
+  return `${CLAUDE_PROMPT_HEADER}\n${formatExportText(summaries, generatedAt)}`;
+}
+
+/**
  * 組出 iOS 捷徑 App 的 run-shortcut URL：直接執行指定名稱的捷徑，
  * 匯出文字經 URL 編碼後以 text 參數帶入，捷徑內用「捷徑輸入」即可取得。
  */
@@ -129,7 +147,7 @@ export function buildRunShortcutUrl(shortcutName: string, text: string): string 
  */
 export async function runClaudeShortcut(db: SQLiteDatabase): Promise<void> {
   const summaries = await buildExportSummary(db);
-  const text = formatExportText(summaries);
+  const text = formatClaudePromptText(summaries);
   const shortcutName = await getClaudeShortcutName(db);
   const url = buildRunShortcutUrl(shortcutName, text);
   try {

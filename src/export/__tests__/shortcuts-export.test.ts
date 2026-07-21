@@ -137,11 +137,31 @@ describe('formatExportJson', () => {
 
 describe('buildRunShortcutUrl', () => {
   test('捷徑名稱與文字都經過 URL 編碼，中文與換行不會弄壞 URL', () => {
-    const url = buildRunShortcutUrl('用 Claude 分析持股', '第一行\n## 2330 台積電');
+    const url = buildRunShortcutUrl('用Claude分析持股', '第一行\n## 2330 台積電');
     expect(url.startsWith('shortcuts://run-shortcut?name=')).toBe(true);
-    expect(url).toContain(`name=${encodeURIComponent('用 Claude 分析持股')}`);
+    expect(url).toContain(`name=${encodeURIComponent('用Claude分析持股')}`);
     expect(url).toContain('input=text');
     expect(url).toContain(`text=${encodeURIComponent('第一行\n## 2330 台積電')}`);
     expect(url).not.toContain('\n');
+  });
+});
+
+describe('formatClaudePromptText', () => {
+  test('內容 = 提示詞（含純文字回覆要求）+ 策略數據', () => {
+    const summaries: StockExportSummary[] = [
+      {
+        stockCode: '2330',
+        stockName: '台積電',
+        latestPrice: 900,
+        latestDate: '2026-07-20',
+        strategies: [{ type: 'grid', triggered: false, reason: '未跌破第 1 檔' }],
+      },
+    ];
+    const text = formatClaudePromptText(summaries, new Date('2026-07-21T00:00:00.000Z'));
+    expect(text).toContain('台股投資顧問');
+    expect(text).toContain('純文字');
+    expect(text).toContain('2330');
+    expect(text).toContain('未跌破第 1 檔');
+    expect(text.indexOf('台股投資顧問')).toBeLessThan(text.indexOf('2330'));
   });
 });
