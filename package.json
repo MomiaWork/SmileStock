@@ -11,7 +11,9 @@
     "expo-status-bar": "~57.0.1",
     "expo-task-manager": "~57.0.5",
     "react": "19.2.3",
-    "react-native": "0.86.0"
+    "react-dom": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
