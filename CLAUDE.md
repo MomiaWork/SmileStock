@@ -1,118 +1,119 @@
-# 台股微笑曲線盯盤 App
+請依照以下規格，一步一步建立這個 React Native (Expo, TypeScript) 專案。
+專案已有 CLAUDE.md 放在根目錄，請先讀取並遵守其中的架構規則、資料模型、
+Git 版控慣例。開發過程請照下方 Phase 順序進行，**每完成一個 Phase 就用
+`./scripts/bump_version.sh patch` 進版並 commit，訊息說明完成內容與如何驗證，
+不要累積多個 Phase 才一次 commit。**
 
-手機 App，監控最多 5 檔台股，每檔獨立設定策略（微笑曲線網格 / RSI / 均線），
-本機背景查價比對策略、觸發時發本機通知；可將目前策略比較結果匯出，透過 iOS 捷徑
-轉交 Claude App 取得 AI 分析意見。純 Client 端架構，無後端伺服器。
+## 專案規格摘要
 
-## 常用指令
+台股盯盤 App，監控最多 5 檔股票，每檔獨立設定：
+- 查價間隔（可調整，App 開著時前景輪詢照此間隔；背景執行為 best-effort，不保證頻率）
+- 一個或多個策略：微笑曲線網格 / RSI / 均線交叉
+- 策略觸發時發本機通知，同一訊號不重複通知（見 CLAUDE.md 的 notification_log 設計）
 
-```bash
-# 安裝依賴
-npm install
+純 Client 端架構，無後端伺服器，資料源為 TWSE OpenAPI（免費、無需 API key，
+但為快照式資料非逐筆即時）。
 
-# 本機開發（開發用 client，非 Expo Go，因為用到 background-fetch / sqlite 等 native module）
-npx expo run:ios
-npx expo run:android
+## 初始化
 
-# 型別檢查 + Lint
-npm run typecheck
-npm run lint
+1. 用 `npx create-expo-app` 建立 TypeScript 專案
+2. 安裝：`expo-sqlite`、`expo-background-fetch`、`expo-task-manager`、
+   `expo-notifications`、`expo-sharing`
+3. 建立 CLAUDE.md 中列出的目錄結構
+4. 設定 ESLint + Prettier + TypeScript strict mode
+5. 設定 Jest，確認 `src/strategy-engine` 可以獨立跑測試（不依賴任何 RN/Expo import）
+6. 初始化 git repo，建立 `.gitignore`（含 `.env`、`node_modules`、`ios/`、`android/`
+   若之後有 prebuild 產物）
+7. 複製我提供的 `.github/workflows/ci.yml` 與 `.github/workflows/eas-build.yml` 進去
+8. 複製 `scripts/bump_version.sh` 並確認可執行
+9. 初始 commit：`chore: project scaffold`
 
-# 單元測試（策略引擎是純函式，優先確保這塊測試覆蓋率）
-npm test
-npm test -- --coverage
+完成後跟我確認一次，我看過再繼續 Phase 1。
 
-# 每次完成一個 Phase / 合併前手動進版（見 scripts/bump_version.sh）
-./scripts/bump_version.sh patch   # patch | minor | major
+## Phase 1：策略引擎（純函式，最優先）
 
-# EAS 雲端建置（免本機 Xcode 簽章即可產生可安裝檔）
-eas build --platform ios --profile preview
-eas build --platform android --profile preview
+在 `src/strategy-engine/` 實作：
 
-# 正式送審 / 上架
-eas build --platform ios --profile production
-eas submit --platform ios
-```
+- `types.ts`：定義 `PricePoint { date, close, high, low, volume }`、
+  `StrategySignal { triggered: boolean, reason: string, tierIndex?: number }`、
+  `Strategy` 介面：`evaluate(history: PricePoint[], config: unknown): StrategySignal`
+- `grid-strategy.ts`：實作微笑曲線網格判斷邏輯——
+  輸入錨定價、預算、間距%、檔位數（金字塔權重 1:1.5:2:2.5:3...）、目前價格，
+  輸出是否觸發、觸發第幾檔。這段邏輯我們已經在試算工具驗證過，可以直接參考其計算方式。
+- `rsi-strategy.ts`：標準 RSI 計算（預設 14 日），低於可設定門檻（預設 30）視為訊號
+- `ma-cross-strategy.ts`：短均線穿越長均線（參數可設定，如 5 日穿 20 日）
+- `engine.ts`：統一入口，根據 `strategy_config.type` 分派到對應實作；
+  歷史資料不足時回傳明確的「資料不足」結果，不要硬算
+- 每個策略檔案在 `__tests__/` 寫測試，至少涵蓋：
+  剛好等於門檻、一次跌穿兩檔（網格）、資料筆數不足（RSI/均線）
 
-## 架構重點
+驗證方式：`npm test` 全過，不需要啟動 App 或連任何網路。完成後 commit + bump version。
 
-專案結構（managed Expo workflow，TypeScript）：
+## Phase 2：資料抓取 + 每日歷史收集
 
-```
-src/
-  strategy-engine/       # 純函式，與平台無關，禁止在此 import 任何 RN/Expo API
-    types.ts             # Strategy 介面、StrategySignal、PricePoint 型別
-    grid-strategy.ts      # 微笑曲線網格策略
-    rsi-strategy.ts        # RSI 策略
-    ma-cross-strategy.ts   # 均線交叉策略
-    engine.ts             # 統一入口：輸入 priceHistory + strategy config，輸出 signal
-    __tests__/            # 每個策略獨立測試，涵蓋邊界情況
+- `data-fetch/twse-client.ts`：封裝 TWSE OpenAPI 呼叫，含重試（最多 3 次、指數退避）
+  與回傳格式驗證（欄位缺失要丟明確錯誤，不要靜默吞掉）
+- `db/schema.ts` + repo 檔案：依 CLAUDE.md 的資料模型建表
+- `data-fetch/price-history-sync.ts`：抓到當日收盤價後寫入 `price_history`，
+  同一天重複執行要 upsert 不要重複插入
+- 寫一個簡單的 CLI script 或測試頁面，手動觸發一次「抓 5 檔股票 → 寫入 DB →
+  讀出來確認資料正確」，此階段先不接策略引擎與通知
 
-  data-fetch/
-    twse-client.ts        # TWSE OpenAPI 呼叫封裝，含重試與格式錯誤處理
-    price-history-sync.ts # 每日收盤價寫入本機 DB
+驗證方式：手動跑一次，確認 DB 裡的資料正確、重跑不會產生重複資料列。完成後 commit + bump version。
 
-  db/
-    schema.ts              # SQLite 建表
-    watchlist-repo.ts
-    price-history-repo.ts
-    notification-log-repo.ts
+## Phase 3：策略引擎 + 通知打通（手動觸發）
 
-  background/
-    background-fetch-task.ts   # 註冊 expo-background-fetch，呼叫 data-fetch + strategy-engine
-    foreground-poll.ts         # App 開著時，依使用者設定的查價間隔前景輪詢（比背景可靠）
+- `notifications/local-notification.ts`：串接 `expo-notifications`，發送前先查
+  `notification_log` 避免重複通知同一訊號
+- 在 App 內做一個「立即檢查」按鈕：讀 watchlist → 對每檔股票的每個啟用策略呼叫
+  `engine.ts` → 有觸發就寫 notification_log 並發本機通知
+- 這階段用假資料或少量真實股票手動測試，確認整條路徑（DB 讀取 → 策略判斷 →
+  通知發送 → 去重）正確
 
-  notifications/
-    local-notification.ts      # expo-notifications 包裝，含 notification-log 去重邏輯
+驗證方式：手動按「立即檢查」，確認觸發規則正確的股票會跳通知，未觸發的不會，
+重複按不會對同一訊號發兩次通知。完成後 commit + bump version。
 
-  export/
-    shortcuts-export.ts        # 產生策略比較摘要 (JSON/純文字)，透過 Share Sheet 匯出
+## Phase 4：背景任務串接
 
-  ui/
-    screens/
-    components/
-```
+- `background/background-fetch-task.ts`：用 `expo-task-manager` 註冊背景任務，
+  內容呼叫 Phase 2 + Phase 3 的邏輯
+- `background/foreground-poll.ts`：App 在前景時，依使用者設定的查價間隔用
+  `setInterval` 輪詢（比背景任務可靠，作為背景不可靠時的補償）
+- UI 顯示「上次背景執行時間」，並提供「手動立即更新」按鈕（複用 Phase 3 的邏輯）
 
-**核心規則：`strategy-engine/` 內的程式碼不得 import 任何 RN、Expo 或 DB 相關套件。**
-這層只吃資料、吐結果，才能真正獨立單元測試，也才能之後輕鬆加新策略而不動其他層。
+驗證方式：實機測試（模擬器對背景任務行為不準確），觀察背景任務是否真的被系統呼叫，
+並在 README 或程式碼註解記錄實測到的觸發頻率，不要假設一定每小時一次。
+完成後 commit + bump version。
 
-- 商業邏輯（策略比對、觸發判斷）：`src/strategy-engine`、`src/data-fetch`
-- UI 只做顯示與使用者輸入，不做任何策略計算
-- 依賴管理：npm，鎖定用 `package-lock.json`
-- 背景執行為盡力而為（best-effort），不保證頻率，UI 必須顯示「上次背景更新時間」
+## Phase 5：UI
 
-## 資料模型（SQLite）
+- 股票清單頁：新增/編輯/刪除 watchlist（最多 5 筆），每筆可設定查價間隔、
+  啟用哪些策略與其參數
+- 個股詳情頁：顯示目前策略狀態、歷史觸發記錄、目前價格走勢（簡單折線圖即可）
+- 設定頁：全域預設查價間隔、通知權限狀態
 
-- `watchlist`：股票代號、預算、查價間隔（可個別覆蓋全域設定）、啟用中的策略清單
-- `strategy_config`：所屬 watchlist_id、策略類型（grid/rsi/ma_cross）、該策略專屬參數（JSON）
-- `price_history`：股票代號、日期、收盤價、最高、最低、成交量（RSI/均線計算依據）
-- `grid_tiers`：網格策略專用，所屬 strategy_config_id、檔位序號、觸發價、狀態
-- `notification_log`：避免同一訊號重複通知，記錄已發送的 (watchlist_id, strategy_config_id, signal_key, 時間)
+驗證方式：走過一次完整使用者流程（新增股票 → 設定策略 → 手動檢查 → 看到通知 →
+查看歷史記錄）。完成後 commit + bump version。
 
-## CI/CD
+## Phase 6：Shortcuts 匯出（選做，前面都完成且穩定後再做）
 
-- `.github/workflows/ci.yml`：push / PR 觸發，跑 `typecheck` + `lint` + `test`
-- `.github/workflows/eas-build.yml`：merge 到 `main` 時觸發，跑 `eas build --profile preview`
-  兩平台，需要 repo secret `EXPO_TOKEN`
-- 正式上架（TestFlight / Play 內部測試）維持手動觸發 `eas submit`，不做自動送審
+- `export/shortcuts-export.ts`：把目前所有股票的策略比較結果組成一段結構化文字
+  （或 JSON），呼叫 `expo-sharing` 開啟系統分享面板
+- 額外提供一份「如何在 iOS 捷徑 App 建立自動化」的操作說明文件（純文字步驟，
+  非程式碼），描述使用者如何：從分享面板選擇捷徑 → 捷徑把文字轉交 Claude App →
+  取得 AI 分析意見。這段是使用者手動設定的捷徑流程，App 本身只需要把資料
+  匯出成好讀的文字/JSON，不需要開發任何深度整合程式碼
 
-## Git 版控慣例
+驗證方式：手動分享一次，確認匯出的文字/JSON 內容完整、格式清楚可讀。
 
-- Conventional Commits：`feat: `, `fix: `, `test: `, `refactor: `, `chore: `
-- 每完成一個可獨立驗證的 Phase（見開發指引）就 commit 一次，訊息說明做了什麼、驗證方式
-- `./scripts/bump_version.sh` 會同步更新 `package.json` version、`app.json` 的
-  `expo.version` / `ios.buildNumber` / `android.versionCode`，並自動建立 git tag
-- 不要手動改版本號，一律透過腳本，避免三處版號不同步
+---
 
-## 注意
+## 重要提醒（請務必遵守，寫進每個 Phase 的實作中）
 
-- **TWSE OpenAPI 是快照資料，非逐筆即時**，且格式偶爾變動，`twse-client.ts` 必須有明確的
-  格式驗證與失敗處理，不可假設回傳結構永遠一致
-- **iOS 背景任務頻率不可控**，`expo-background-fetch` 只是「請求」系統執行，不是排程保證，
-  相關限制與 UI 因應方式見主規劃文件〈台股盯盤App規劃.md〉第 4 節
-- **RSI / 均線需要足夠的歷史資料才有意義**，新增股票的前幾天策略引擎應回傳「資料不足」而非
-  硬算出誤導性訊號
-- **不要把任何 API key 或憑證寫死在程式碼**，TWSE OpenAPI 目前不需要 key，但若未來換成
-  付費資料源，一律用 EAS Secrets 或 `.env`（並加進 `.gitignore`）
-- **Shortcuts 匯出走 Share Sheet，不做 App Intents**：`shortcuts-export.ts` 只需產生
-  文字/JSON 並呼叫系統分享，不需要 native module 開發
+1. `strategy-engine/` 內任何檔案都不可以 `import` RN 或 Expo 相關套件，
+   違反這條會讓策略邏輯失去獨立測試的意義
+2. TWSE API 回傳格式要做驗證，不要假設欄位一定存在
+3. 背景任務相關的程式碼與文件用詞避免「即時」、「保證」這類字眼，
+   一律用「嘗試」、「best-effort」，UI 文案也要如實反映
+4. 每個 Phase 結束都要進版 + commit，不要等到全部做完才一次 commit
+5. 有任何規格不清楚的地方，先問我，不要自行假設後直接大量產出程式碼

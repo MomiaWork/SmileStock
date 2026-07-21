@@ -1,0 +1,11 @@
+node_modules
+.expo
+dist
+web-build
+coverage
+ios
+android
+
+# hand-authored prose, not code
+CLAUDE.md
+README.md
