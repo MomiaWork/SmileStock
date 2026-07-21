@@ -1,11 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 
-import DevPriceSyncScreen from './src/ui/screens/DevPriceSyncScreen';
+import DevCheckScreen from './src/ui/screens/DevCheckScreen';
 
 export default function App() {
   return (
     <>
-      <DevPriceSyncScreen />
+      <DevCheckScreen />
       <StatusBar style="auto" />
     </>
   );
