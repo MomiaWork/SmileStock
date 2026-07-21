@@ -11,7 +11,7 @@ import {
   MAX_WATCHLIST_SIZE,
   type WatchlistItem,
 } from '../../db/watchlist-repo';
-import { shareStrategyExport } from '../../export/shortcuts-export';
+import { runClaudeShortcut, shareStrategyExport } from '../../export/shortcuts-export';
 import { requestNotificationPermission } from '../../notifications/local-notification';
 import { checkWatchlistAndNotify } from '../../notifications/run-check';
 import type { RootStackParamList } from '../navigation/types';
@@ -28,6 +28,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [checking, setChecking] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const reload = useCallback(async () => {
     const db = await getDb();
@@ -85,6 +86,18 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
     }
   };
 
+  const handleClaudeAnalyze = async (): Promise<void> => {
+    setAnalyzing(true);
+    try {
+      const db = await getDb();
+      await runClaudeShortcut(db);
+    } catch (err) {
+      Alert.alert('執行捷徑失敗', err instanceof Error ? err.message : String(err));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const canAddMore = items.length < MAX_WATCHLIST_SIZE;
 
   return (
@@ -97,9 +110,14 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
           disabled={checking}
         />
         <Button
-          title={sharing ? '分享中...' : '分享比較結果'}
+          title={sharing ? '分享中...' : '分享'}
           onPress={handleShare}
           disabled={sharing || items.length === 0}
+        />
+        <Button
+          title={analyzing ? '啟動中...' : 'Claude 分析'}
+          onPress={handleClaudeAnalyze}
+          disabled={analyzing || items.length === 0}
         />
       </View>
 

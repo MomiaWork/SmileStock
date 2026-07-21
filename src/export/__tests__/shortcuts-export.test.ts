@@ -9,6 +9,10 @@ jest.mock('expo-sharing', () => ({
   isAvailableAsync: jest.fn(),
   shareAsync: jest.fn(),
 }));
+jest.mock('react-native', () => ({
+  Linking: { openURL: jest.fn() },
+}));
+jest.mock('../../db/settings-repo');
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -17,6 +21,7 @@ import { getEnabledStrategyConfigs, getWatchlist } from '../../db/watchlist-repo
 import type { PricePoint } from '../../strategy-engine/types';
 import {
   buildExportSummary,
+  buildRunShortcutUrl,
   formatExportJson,
   formatExportText,
   type StockExportSummary,
@@ -127,5 +132,16 @@ describe('formatExportJson', () => {
 
     expect(parsed.stocks[0].stockCode).toBe('2330');
     expect(parsed.generatedAt).toBe('2026-07-21T00:00:00.000Z');
+  });
+});
+
+describe('buildRunShortcutUrl', () => {
+  test('捷徑名稱與文字都經過 URL 編碼，中文與換行不會弄壞 URL', () => {
+    const url = buildRunShortcutUrl('用 Claude 分析持股', '第一行\n## 2330 台積電');
+    expect(url.startsWith('shortcuts://run-shortcut?name=')).toBe(true);
+    expect(url).toContain(`name=${encodeURIComponent('用 Claude 分析持股')}`);
+    expect(url).toContain('input=text');
+    expect(url).toContain(`text=${encodeURIComponent('第一行\n## 2330 台積電')}`);
+    expect(url).not.toContain('\n');
   });
 });

@@ -18,3 +18,16 @@ export async function setGlobalDefaultIntervalSec(
 ): Promise<void> {
   await setMeta(db, GLOBAL_DEFAULT_INTERVAL_KEY, String(intervalSec));
 }
+
+const CLAUDE_SHORTCUT_NAME_KEY = 'claude_shortcut_name';
+export const DEFAULT_CLAUDE_SHORTCUT_NAME = '用 Claude 分析持股';
+
+/** 「Claude 分析」按鈕要執行的 iOS 捷徑名稱，必須與捷徑 App 內的名稱完全一致 */
+export async function getClaudeShortcutName(db: SQLiteDatabase): Promise<string> {
+  const value = await getMeta(db, CLAUDE_SHORTCUT_NAME_KEY);
+  return value !== null && value.trim() !== '' ? value : DEFAULT_CLAUDE_SHORTCUT_NAME;
+}
+
+export async function setClaudeShortcutName(db: SQLiteDatabase, name: string): Promise<void> {
+  await setMeta(db, CLAUDE_SHORTCUT_NAME_KEY, name.trim());
+}

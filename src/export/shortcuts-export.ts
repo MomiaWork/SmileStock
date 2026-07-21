@@ -1,8 +1,10 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { Linking } from 'react-native';
 
 import { getPriceHistory } from '../db/price-history-repo';
+import { getClaudeShortcutName } from '../db/settings-repo';
 import { getEnabledStrategyConfigs, getWatchlist } from '../db/watchlist-repo';
 import { evaluateStrategy } from '../strategy-engine/engine';
 
@@ -110,4 +112,31 @@ export async function shareStrategyExport(db: SQLiteDatabase): Promise<void> {
     mimeType: 'text/plain',
     dialogTitle: '分享策略比較結果',
   });
+}
+
+/**
+ * 組出 iOS 捷徑 App 的 run-shortcut URL：直接執行指定名稱的捷徑，
+ * 匯出文字經 URL 編碼後以 text 參數帶入，捷徑內用「捷徑輸入」即可取得。
+ */
+export function buildRunShortcutUrl(shortcutName: string, text: string): string {
+  return `shortcuts://run-shortcut?name=${encodeURIComponent(shortcutName)}&input=text&text=${encodeURIComponent(text)}`;
+}
+
+/**
+ * 一鍵執行使用者指定的 iOS 捷徑（不經分享面板）。
+ * 捷徑名稱存在設定裡，必須與捷徑 App 內的名稱完全一致，否則捷徑 App 會報找不到。
+ * 僅 iOS 有捷徑 App；其他平台 openURL 會失敗並丟出錯誤，由呼叫端顯示。
+ */
+export async function runClaudeShortcut(db: SQLiteDatabase): Promise<void> {
+  const summaries = await buildExportSummary(db);
+  const text = formatExportText(summaries);
+  const shortcutName = await getClaudeShortcutName(db);
+  const url = buildRunShortcutUrl(shortcutName, text);
+  try {
+    await Linking.openURL(url);
+  } catch {
+    throw new Error(
+      `shortcuts-export: 無法開啟捷徑「${shortcutName}」，請確認裝置已安裝捷徑 App，且設定頁的捷徑名稱與捷徑 App 內的名稱完全一致`,
+    );
+  }
 }
