@@ -5,6 +5,22 @@ import type { PricePoint, StrategySignal } from './types';
 
 export type StrategyType = 'grid' | 'rsi' | 'ma_cross';
 
+/**
+ * 金字塔加碼滾動式策略（市場狀態機）不走 evaluateStrategy 分派，
+ * 因為它是「有狀態」策略：介面為 (history, config, prevState) → { signal, nextState }，
+ * PyramidState 需由呼叫端持久化後在下一次評估時傳回。
+ * 規格見 docs/pyramid-state-machine-spec.md。
+ */
+export { evaluatePyramid, DEFAULT_PYRAMID_PARAMS } from './pyramid-state-machine';
+export type {
+  MarketState,
+  PyramidAction,
+  PyramidConfig,
+  PyramidResult,
+  PyramidSignal,
+  PyramidState,
+} from './pyramid-state-machine';
+
 export interface StrategyConfig {
   type: StrategyType;
   params: unknown;

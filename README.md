@@ -1,8 +1,13 @@
 # 台股微笑曲線盯盤 App
 
-手機 App，監控最多 5 檔台股，每檔獨立設定策略（微笑曲線網格 / RSI / 均線），
-本機背景查價比對策略、觸發時發本機通知；可將目前策略比較結果匯出，透過 iOS 捷徑
-轉交 Claude App 取得 AI 分析意見。純 Client 端架構，無後端伺服器。
+手機 App，監控最多 5 檔台股，每檔獨立設定策略（微笑曲線網格 / RSI / 均線 /
+金字塔加碼狀態機），本機背景查價比對策略、觸發時發本機通知；可將目前策略比較
+結果匯出，透過 iOS 捷徑轉交 Claude App 取得 AI 分析意見。純 Client 端架構，
+無後端伺服器。
+
+**產品目標**：讓使用者依資訊與策略穩定累積資產。UI 以「按表操課」為原則——
+策略輸出必須是可直接執行的行動指示（今天做什麼、金額多少、防守價在哪），
+不是需要使用者再解讀的技術指標。
 
 ## 常用指令
 
@@ -41,6 +46,7 @@ src/
     grid-strategy.ts      # 微笑曲線網格策略
     rsi-strategy.ts        # RSI 策略
     ma-cross-strategy.ts   # 均線交叉策略
+    pyramid-state-machine.ts # 金字塔加碼狀態機（有狀態策略，規格見 docs/pyramid-state-machine-spec.md）
     engine.ts             # 統一入口：輸入 priceHistory + strategy config，輸出 signal
     __tests__/            # 每個策略獨立測試，涵蓋邊界情況
 
@@ -83,6 +89,9 @@ src/
 - `strategy_config`：所屬 watchlist_id、策略類型（grid/rsi/ma_cross）、該策略專屬參數（JSON）
 - `price_history`：股票代號、日期、收盤價、最高、最低、成交量（RSI/均線計算依據）
 - `grid_tiers`：網格策略專用，所屬 strategy_config_id、檔位序號、觸發價、狀態
+- `pyramid_state`（**待新增**，金字塔狀態機策略接進 DB/UI 時建）：所屬
+  strategy_config_id、目前狀態、候選狀態與天數、已加碼級數、上次加碼價、
+  移動停損價、突破待確認計數、盤整區間邊界；另建狀態變化歷史表供回測除錯
 - `notification_log`：避免同一訊號重複通知，記錄已發送的 (watchlist_id, strategy_config_id, signal_key, 時間)
 
 ## CI/CD
