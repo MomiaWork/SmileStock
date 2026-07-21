@@ -10,7 +10,7 @@
 # 安裝依賴
 npm install
 
-# 本機開發（開發用 client，非 Expo Go，因為用到 background-fetch / sqlite 等 native module）
+# 本機開發（開發用 client，非 Expo Go，因為用到 background-task / sqlite 等 native module）
 npx expo run:ios
 npx expo run:android
 
@@ -55,7 +55,7 @@ src/
     notification-log-repo.ts
 
   background/
-    background-fetch-task.ts   # 註冊 expo-background-fetch，呼叫 data-fetch + strategy-engine
+    background-fetch-task.ts   # 註冊 expo-background-task，呼叫 data-fetch + strategy-engine
     foreground-poll.ts         # App 開著時，依使用者設定的查價間隔前景輪詢（比背景可靠）
 
   notifications/
@@ -109,8 +109,9 @@ src/
 
 - **TWSE OpenAPI 是快照資料，非逐筆即時**，且格式偶爾變動，`twse-client.ts` 必須有明確的
   格式驗證與失敗處理，不可假設回傳結構永遠一致
-- **iOS 背景任務頻率不可控**，`expo-background-fetch` 只是「請求」系統執行，不是排程保證，
-  相關限制與 UI 因應方式見主規劃文件〈台股盯盤App規劃.md〉第 4 節
+- **背景任務頻率不可控**，`expo-background-task`（原本規劃的 `expo-background-fetch`
+  在這個 SDK 版本已標記 deprecated，已改用官方建議的替代套件）只是嘗試向系統「請求」
+  執行，不是排程保證。相關實測結果見下方「背景任務實測頻率」
 - **RSI / 均線需要足夠的歷史資料才有意義**，新增股票的前幾天策略引擎應回傳「資料不足」而非
   硬算出誤導性訊號
 - **不要把任何 API key 或憑證寫死在程式碼**，TWSE OpenAPI 目前不需要 key，但若未來換成
@@ -119,3 +120,22 @@ src/
   文字/JSON 並呼叫系統分享，不需要 native module 開發
 - **建置/發布方案尚未決定**（EAS vs. 原生 xcodebuild runner），現階段不要在程式碼或
   文件中預設用 EAS，避免之後改方案要大改
+
+## 背景任務實測頻率
+
+`src/background/background-fetch-task.ts` 用 `expo-background-task` 註冊，
+`minimumInterval` 設為 15 分鐘（該套件允許的最小值）。**這只是最小間隔提示，
+不是排程保證**——`expo-background-task` 官方型別註解明確寫著：
+
+> Tasks won't run exactly on schedule. On iOS, short intervals are often
+> ignored — the system typically runs background tasks during specific
+> windows, such as overnight.
+
+在寫這份文件的當下（開發環境沒有實體裝置/模擬器可以長時間觀察），還沒有實測數據。
+**這一段等你在實機上跑一段時間（建議至少觀察 1–2 天）後，麻煩回報：**
+
+- 實際觀察到背景任務被系統呼叫的頻率／時間點（iOS 和 Android 可能差很多）
+- App 在背景多久沒開、電量模式（低電量模式會影響）是否影響觸發
+- `DevBackgroundScreen` 裡「上次背景執行時間」顯示的間隔紀錄
+
+拿到實測數據後把這段更新掉，不要讓「15 分鐘」這個數字被誤讀成「每 15 分鐘會執行一次」。

@@ -65,5 +65,10 @@ export async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
       sent_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE (watchlist_id, strategy_config_id, signal_key)
     );
+
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `);
 }
