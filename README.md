@@ -117,7 +117,9 @@ src/
 - **不要把任何 API key 或憑證寫死在程式碼**，TWSE OpenAPI 目前不需要 key，但若未來換成
   付費資料源，一律用 EAS Secrets 或 `.env`（並加進 `.gitignore`）
 - **Shortcuts 匯出走 Share Sheet，不做 App Intents**：`shortcuts-export.ts` 只需產生
-  文字/JSON 並呼叫系統分享，不需要 native module 開發
+  文字/JSON 並呼叫系統分享，不需要 native module 開發。使用者如何在 iOS 捷徑 App
+  設定「分享面板選捷徑 → 轉交 Claude App」，見
+  [`docs/ios-shortcuts-setup.md`](docs/ios-shortcuts-setup.md)
 - **建置/發布方案尚未決定**（EAS vs. 原生 xcodebuild runner），現階段不要在程式碼或
   文件中預設用 EAS，避免之後改方案要大改
 

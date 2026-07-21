@@ -10,6 +10,7 @@ import {
   MAX_WATCHLIST_SIZE,
   type WatchlistItem,
 } from '../../db/watchlist-repo';
+import { shareStrategyExport } from '../../export/shortcuts-export';
 import { requestNotificationPermission } from '../../notifications/local-notification';
 import { checkWatchlistAndNotify } from '../../notifications/run-check';
 import type { RootStackParamList } from '../navigation/types';
@@ -19,6 +20,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Watchlist'>;
 export default function WatchlistScreen({ navigation }: Props): React.JSX.Element {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [checking, setChecking] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const reload = useCallback(async () => {
     const db = await getDb();
@@ -64,6 +66,18 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
     }
   };
 
+  const handleShare = async (): Promise<void> => {
+    setSharing(true);
+    try {
+      const db = await getDb();
+      await shareStrategyExport(db);
+    } catch (err) {
+      Alert.alert('分享失敗', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const canAddMore = items.length < MAX_WATCHLIST_SIZE;
 
   return (
@@ -74,6 +88,11 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
           title={checking ? '檢查中...' : '立即檢查'}
           onPress={handleImmediateCheck}
           disabled={checking}
+        />
+        <Button
+          title={sharing ? '分享中...' : '分享比較結果'}
+          onPress={handleShare}
+          disabled={sharing || items.length === 0}
         />
       </View>
 
