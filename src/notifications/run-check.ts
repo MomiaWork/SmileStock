@@ -13,6 +13,7 @@ export interface CheckResultItem {
   strategyType: string;
   signal: StrategySignal;
   notified: boolean;
+  notifyError?: string;
 }
 
 function buildSignalKey(
@@ -43,15 +44,21 @@ export async function checkWatchlistAndNotify(db: SQLiteDatabase): Promise<Check
       const signal = evaluateStrategy(history, { type: config.type, params: config.params });
 
       let notified = false;
+      let notifyError: string | undefined;
       if (signal.triggered) {
         const signalKey = buildSignalKey(config.type, signal, history);
-        notified = await notifyIfNew(db, {
-          watchlistId: item.id,
-          strategyConfigId: config.id,
-          signalKey,
-          title: `${item.stockCode} ${item.stockName}`,
-          body: signal.reason,
-        });
+        try {
+          notified = await notifyIfNew(db, {
+            watchlistId: item.id,
+            strategyConfigId: config.id,
+            signalKey,
+            title: `${item.stockCode} ${item.stockName}`,
+            body: signal.reason,
+          });
+        } catch (err) {
+          // 單一訊號發送失敗（例如系統通知一時失敗）不該讓其他股票/策略的檢查也被中斷
+          notifyError = err instanceof Error ? err.message : String(err);
+        }
       }
 
       results.push({
@@ -61,6 +68,7 @@ export async function checkWatchlistAndNotify(db: SQLiteDatabase): Promise<Check
         strategyType: config.type,
         signal,
         notified,
+        ...(notifyError !== undefined ? { notifyError } : {}),
       });
     }
   }

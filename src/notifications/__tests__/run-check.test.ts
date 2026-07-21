@@ -118,3 +118,33 @@ test('notifyIfNew 回傳 false（已通知過）時，結果會標記 notified=f
 
   expect(results[0].notified).toBe(false);
 });
+
+test('某一檔股票的 notifyIfNew 失敗時，不會中斷其他股票的檢查', async () => {
+  mockGetWatchlist.mockResolvedValue([
+    { id: 1, stockCode: 'A', stockName: 'A', budget: 10000, priceCheckIntervalSec: null },
+    { id: 2, stockCode: 'B', stockName: 'B', budget: 10000, priceCheckIntervalSec: null },
+  ]);
+  mockGetEnabledStrategyConfigs.mockImplementation((_db: unknown, watchlistId: number) =>
+    Promise.resolve([
+      {
+        id: watchlistId * 10,
+        watchlistId,
+        type: 'grid',
+        params: { anchorPrice: 100, budget: 10000, spacingPercent: 5, tierCount: 5 },
+        enabled: true,
+      },
+    ]),
+  );
+  mockGetPriceHistory.mockResolvedValue(history([90]));
+  mockNotifyIfNew
+    .mockRejectedValueOnce(new Error('scheduleNotificationAsync boom'))
+    .mockResolvedValueOnce(true);
+
+  const results = await checkWatchlistAndNotify(fakeDb);
+
+  expect(results).toHaveLength(2);
+  expect(results[0].notified).toBe(false);
+  expect(results[0].notifyError).toContain('boom');
+  expect(results[1].notified).toBe(true);
+  expect(results[1].notifyError).toBeUndefined();
+});
