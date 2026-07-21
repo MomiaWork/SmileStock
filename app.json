@@ -2,16 +2,16 @@
   "expo": {
     "name": "SmileStock",
     "slug": "smilestock",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "6"
+      "buildNumber": "7"
     },
     "android": {
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,6 +23,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-sqlite", "expo-sharing", "expo-background-task"]
+    "plugins": [
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-background-task"
+    ]
   }
 }
