@@ -90,6 +90,7 @@ export const gridStrategy: Strategy = {
       triggered: true,
       reason: `目前價格 ${currentPrice} 已跌破第 ${deepestTier} 檔門檻 ${tierTriggerPrice(config, deepestTier).toFixed(2)}，建議投入約 ${amount.toFixed(0)} 元`,
       tierIndex: deepestTier,
+      amount,
     };
   },
 };

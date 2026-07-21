@@ -8,6 +8,8 @@ export interface WatchlistItem {
   stockName: string;
   budget: number;
   priceCheckIntervalSec: number | null;
+  takeProfitPercent: number | null;
+  stopLossPercent: number | null;
 }
 
 export interface StrategyConfigRow {
@@ -23,6 +25,8 @@ export interface NewWatchlistItem {
   stockName: string;
   budget: number;
   priceCheckIntervalSec?: number | null;
+  takeProfitPercent?: number | null;
+  stopLossPercent?: number | null;
 }
 
 export interface NewStrategyConfig {
@@ -44,9 +48,16 @@ export async function addWatchlistItem(
   }
 
   const result = await db.runAsync(
-    `INSERT INTO watchlist (stock_code, stock_name, budget, price_check_interval_sec)
-     VALUES (?, ?, ?, ?)`,
-    [item.stockCode, item.stockName, item.budget, item.priceCheckIntervalSec ?? null],
+    `INSERT INTO watchlist (stock_code, stock_name, budget, price_check_interval_sec, take_profit_percent, stop_loss_percent)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      item.stockCode,
+      item.stockName,
+      item.budget,
+      item.priceCheckIntervalSec ?? null,
+      item.takeProfitPercent ?? null,
+      item.stopLossPercent ?? null,
+    ],
   );
   return result.lastInsertRowId;
 }
@@ -57,9 +68,18 @@ export async function updateWatchlistItem(
   item: NewWatchlistItem,
 ): Promise<void> {
   await db.runAsync(
-    `UPDATE watchlist SET stock_code = ?, stock_name = ?, budget = ?, price_check_interval_sec = ?
+    `UPDATE watchlist SET stock_code = ?, stock_name = ?, budget = ?, price_check_interval_sec = ?,
+                          take_profit_percent = ?, stop_loss_percent = ?
      WHERE id = ?`,
-    [item.stockCode, item.stockName, item.budget, item.priceCheckIntervalSec ?? null, id],
+    [
+      item.stockCode,
+      item.stockName,
+      item.budget,
+      item.priceCheckIntervalSec ?? null,
+      item.takeProfitPercent ?? null,
+      item.stopLossPercent ?? null,
+      id,
+    ],
   );
 }
 
@@ -77,8 +97,11 @@ export async function getWatchlistItem(
     stock_name: string;
     budget: number;
     price_check_interval_sec: number | null;
+    take_profit_percent: number | null;
+    stop_loss_percent: number | null;
   }>(
-    `SELECT id, stock_code, stock_name, budget, price_check_interval_sec FROM watchlist WHERE id = ?`,
+    `SELECT id, stock_code, stock_name, budget, price_check_interval_sec, take_profit_percent, stop_loss_percent
+     FROM watchlist WHERE id = ?`,
     [id],
   );
   if (!row) return null;
@@ -88,6 +111,8 @@ export async function getWatchlistItem(
     stockName: row.stock_name,
     budget: row.budget,
     priceCheckIntervalSec: row.price_check_interval_sec,
+    takeProfitPercent: row.take_profit_percent,
+    stopLossPercent: row.stop_loss_percent,
   };
 }
 
@@ -115,8 +140,11 @@ export async function getWatchlist(db: SQLiteDatabase): Promise<WatchlistItem[]>
     stock_name: string;
     budget: number;
     price_check_interval_sec: number | null;
+    take_profit_percent: number | null;
+    stop_loss_percent: number | null;
   }>(
-    `SELECT id, stock_code, stock_name, budget, price_check_interval_sec FROM watchlist ORDER BY id ASC`,
+    `SELECT id, stock_code, stock_name, budget, price_check_interval_sec, take_profit_percent, stop_loss_percent
+     FROM watchlist ORDER BY id ASC`,
   );
 
   return rows.map((row) => ({
@@ -125,6 +153,8 @@ export async function getWatchlist(db: SQLiteDatabase): Promise<WatchlistItem[]>
     stockName: row.stock_name,
     budget: row.budget,
     priceCheckIntervalSec: row.price_check_interval_sec,
+    takeProfitPercent: row.take_profit_percent,
+    stopLossPercent: row.stop_loss_percent,
   }));
 }
 

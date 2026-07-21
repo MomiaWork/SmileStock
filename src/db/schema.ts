@@ -70,5 +70,33 @@ export async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS trades (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      watchlist_id INTEGER NOT NULL REFERENCES watchlist(id) ON DELETE CASCADE,
+      side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+      price REAL NOT NULL,
+      quantity REAL NOT NULL,
+      traded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      note TEXT
+    );
   `);
+
+  // watchlist 是既有資料表，新欄位不能靠 CREATE TABLE IF NOT EXISTS 補上，
+  // 已安裝過舊版 schema 的裝置要用 ALTER TABLE 補齊，先檢查欄位是否存在避免重複新增。
+  await ensureColumn(db, 'watchlist', 'take_profit_percent', 'take_profit_percent REAL');
+  await ensureColumn(db, 'watchlist', 'stop_loss_percent', 'stop_loss_percent REAL');
+}
+
+async function ensureColumn(
+  db: SQLite.SQLiteDatabase,
+  table: string,
+  column: string,
+  columnDdl: string,
+): Promise<void> {
+  const rows = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  const exists = rows.some((row) => row.name === column);
+  if (!exists) {
+    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${columnDdl}`);
+  }
 }

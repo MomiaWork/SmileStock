@@ -32,6 +32,8 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
   const [stockName, setStockName] = useState('');
   const [budget, setBudget] = useState('10000');
   const [intervalSec, setIntervalSec] = useState('');
+  const [takeProfitPercent, setTakeProfitPercent] = useState('');
+  const [stopLossPercent, setStopLossPercent] = useState('');
 
   const [gridEnabled, setGridEnabled] = useState(false);
   const [gridAnchorPrice, setGridAnchorPrice] = useState('');
@@ -68,6 +70,8 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       setBudget(String(item.budget));
       setIntervalSec(item.priceCheckIntervalSec ? String(item.priceCheckIntervalSec) : '');
       if (!item.priceCheckIntervalSec) setGridBudget(String(item.budget));
+      if (item.takeProfitPercent !== null) setTakeProfitPercent(String(item.takeProfitPercent));
+      if (item.stopLossPercent !== null) setStopLossPercent(String(item.stopLossPercent));
 
       const configs = await getAllStrategyConfigs(db, watchlistId);
       for (const config of configs) {
@@ -112,6 +116,8 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       stockName: stockName.trim(),
       budget: budgetNum,
       priceCheckIntervalSec: toNumberOrUndefined(intervalSec) ?? null,
+      takeProfitPercent: toNumberOrUndefined(takeProfitPercent) ?? null,
+      stopLossPercent: toNumberOrUndefined(stopLossPercent) ?? null,
     };
 
     try {
@@ -208,6 +214,25 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
         placeholder="查價間隔秒數（留空使用全域預設）"
         value={intervalSec}
         onChangeText={setIntervalSec}
+        keyboardType="numeric"
+      />
+
+      <Text style={styles.sectionTitle}>出場設定</Text>
+      <Text style={styles.helperText}>
+        持有部位時用來判斷是否建議出場，留空使用預設值（停利 10%／停損 8%）
+      </Text>
+      <TextInput
+        style={styles.input}
+        placeholder="停利 %（留空預設 10）"
+        value={takeProfitPercent}
+        onChangeText={setTakeProfitPercent}
+        keyboardType="numeric"
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="停損 %（留空預設 8）"
+        value={stopLossPercent}
+        onChangeText={setStopLossPercent}
         keyboardType="numeric"
       />
 
@@ -321,6 +346,11 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 8,
+    marginBottom: 8,
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#888',
     marginBottom: 8,
   },
   switchRow: {
