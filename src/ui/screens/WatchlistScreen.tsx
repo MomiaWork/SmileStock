@@ -1,8 +1,18 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
-import { Alert, Button, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { getCurrentPrices, type CurrentPriceInfo } from '../../data-fetch/current-price';
 import { syncPriceHistory } from '../../data-fetch/price-history-sync';
@@ -16,7 +26,10 @@ import {
 import { runClaudeShortcut, shareStrategyExport } from '../../export/shortcuts-export';
 import { requestNotificationPermission } from '../../notifications/local-notification';
 import { checkWatchlistAndNotify } from '../../notifications/run-check';
+import IconButton from '../components/IconButton';
+import PillButton from '../components/PillButton';
 import type { RootStackParamList } from '../navigation/types';
+import { colors, radius, spacing, typography } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Watchlist'>;
 
@@ -31,6 +44,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   const [priceInfoByCode, setPriceInfoByCode] = useState<Record<string, CurrentPriceInfo | null>>(
     {},
   );
+  const [refreshing, setRefreshing] = useState(false);
   const [checking, setChecking] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -75,6 +89,17 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
     }, [reload, syncLatestPrices]),
   );
 
+  const handleRefresh = async (): Promise<void> => {
+    setRefreshing(true);
+    try {
+      const watchlist = await reload();
+      await syncLatestPrices(watchlist.map((item) => item.stockCode));
+      await reload();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleDelete = (item: WatchlistItem): void => {
     Alert.alert('刪除股票', `確定要刪除 ${item.stockCode} ${item.stockName} 嗎？`, [
       { text: '取消', style: 'cancel' },
@@ -108,6 +133,8 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
         '立即檢查完成',
         `檢查了 ${results.length} 個策略設定，其中 ${notifiedCount} 個發出新通知${failedNote}${syncNote}`,
       );
+    } catch (err) {
+      Alert.alert('立即檢查失敗', err instanceof Error ? err.message : String(err));
     } finally {
       setChecking(false);
     }
@@ -139,37 +166,64 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
 
   const canAddMore = items.length < MAX_WATCHLIST_SIZE;
 
+  const handleAddPress = (): void => {
+    if (!canAddMore) {
+      Alert.alert('已達上限', `最多只能追蹤 ${MAX_WATCHLIST_SIZE} 檔股票，請先刪除一筆再新增`);
+      return;
+    }
+    navigation.navigate('WatchlistForm', {});
+  };
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => <IconButton icon="settings-outline" onPress={() => navigation.navigate('Settings')} />,
+      headerRight: () => <IconButton icon="add-circle" size={28} onPress={handleAddPress} />,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation, canAddMore]);
+
   return (
     <View style={styles.container}>
-      <View style={styles.toolbar}>
-        <Button title="設定" onPress={() => navigation.navigate('Settings')} />
-        <Button
-          title="策略建議"
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.toolbar}
+      >
+        <PillButton
+          label="策略建議"
+          icon="bulb-outline"
           onPress={() => navigation.navigate('StrategyRecommendation')}
         />
-        <Button
-          title={checking ? '檢查中...' : '立即檢查'}
+        <PillButton
+          label={checking ? '檢查中...' : '立即檢查'}
+          icon="refresh-outline"
           onPress={handleImmediateCheck}
           disabled={checking}
         />
-        <Button
-          title={sharing ? '分享中...' : '分享'}
+        <PillButton
+          label={sharing ? '分享中...' : '分享'}
+          icon="share-outline"
           onPress={handleShare}
           disabled={sharing || items.length === 0}
         />
-        <Button
-          title={analyzing ? '啟動中...' : 'Claude 分析'}
+        <PillButton
+          label={analyzing ? '啟動中...' : 'Claude 分析'}
+          icon="sparkles-outline"
           onPress={handleClaudeAnalyze}
           disabled={analyzing || items.length === 0}
         />
-      </View>
+      </ScrollView>
 
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>還沒有任何股票，按下面的「新增股票」開始</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>還沒有任何股票</Text>
+            <Text style={styles.emptySubtext}>按右上角「＋」新增第一檔追蹤股票</Text>
+          </View>
         }
         renderItem={({ item }) => {
           const priceInfo = priceInfoByCode[item.stockCode];
@@ -188,58 +242,59 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
 
           return (
             <Pressable
-              style={styles.row}
+              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
               onPress={() => navigation.navigate('StockDetail', { watchlistId: item.id })}
             >
-              <View style={styles.rowMain}>
-                <View style={styles.rowHeader}>
-                  <View>
-                    <Text style={styles.stockCode}>{item.stockCode}</Text>
-                    <Text style={styles.stockName}>{item.stockName}</Text>
-                  </View>
-                  <View style={styles.priceBlock}>
-                    <Text style={[styles.priceText, changeStyle]}>
-                      {priceInfo ? priceInfo.price.toFixed(2) : '尚無資料'}
-                    </Text>
-                    {changeAmount !== null && changePercent !== null && (
-                      <Text style={[styles.changeText, changeStyle]}>
-                        {changeAmount >= 0 ? '▲' : '▼'} {Math.abs(changeAmount).toFixed(2)} (
-                        {changePercent >= 0 ? '+' : ''}
-                        {changePercent.toFixed(2)}%)
-                      </Text>
-                    )}
-                    {priceInfo && (
-                      <Text style={styles.asOfText}>
-                        {priceInfo.isRealtime ? priceInfo.asOf : `${priceInfo.asOf} 收盤`}
-                      </Text>
-                    )}
-                  </View>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderLeft}>
+                  <Text style={styles.stockCode}>{item.stockCode}</Text>
+                  <Text style={styles.stockName}>{item.stockName}</Text>
                 </View>
-                <Text style={styles.budget}>預算 {item.budget}</Text>
+                <View style={styles.priceBlock}>
+                  <Text style={[styles.priceText, changeStyle]}>
+                    {priceInfo ? priceInfo.price.toFixed(2) : '尚無資料'}
+                  </Text>
+                  {changeAmount !== null && changePercent !== null && (
+                    <Text style={[styles.changeText, changeStyle]}>
+                      {changeAmount >= 0 ? '▲' : '▼'} {Math.abs(changeAmount).toFixed(2)} (
+                      {changePercent >= 0 ? '+' : ''}
+                      {changePercent.toFixed(2)}%)
+                    </Text>
+                  )}
+                  {priceInfo && (
+                    <Text style={styles.asOfText}>
+                      {priceInfo.isRealtime ? priceInfo.asOf : `${priceInfo.asOf} 收盤`}
+                    </Text>
+                  )}
+                </View>
               </View>
-              <View style={styles.rowActions}>
-                <Button
-                  title="編輯"
-                  onPress={() => navigation.navigate('WatchlistForm', { watchlistId: item.id })}
-                />
-                <Button title="刪除" color="#c00" onPress={() => handleDelete(item)} />
+
+              <View style={styles.cardFooter}>
+                <Text style={styles.budget}>預算 {item.budget.toLocaleString()}</Text>
+                <View style={styles.cardActions}>
+                  <IconButton
+                    icon="pencil-outline"
+                    size={18}
+                    onPress={() => navigation.navigate('WatchlistForm', { watchlistId: item.id })}
+                  />
+                  <IconButton
+                    icon="trash-outline"
+                    size={18}
+                    color={colors.destructive}
+                    onPress={() => handleDelete(item)}
+                  />
+                </View>
               </View>
             </Pressable>
           );
         }}
+        ListFooterComponent={
+          <Text style={styles.versionText}>
+            v{appVersion}
+            {buildNumber ? ` (${buildNumber})` : ''}
+          </Text>
+        }
       />
-
-      <View style={styles.footer}>
-        <Button
-          title={canAddMore ? '新增股票' : `已達上限 ${MAX_WATCHLIST_SIZE} 檔`}
-          onPress={() => navigation.navigate('WatchlistForm', {})}
-          disabled={!canAddMore}
-        />
-        <Text style={styles.versionText}>
-          v{appVersion}
-          {buildNumber ? ` (${buildNumber})` : ''}
-        </Text>
-      </View>
     </View>
   );
 }
@@ -247,88 +302,100 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   toolbar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   listContent: {
-    padding: 16,
+    padding: spacing.lg,
+    paddingTop: spacing.sm,
     flexGrow: 1,
   },
+  emptyState: {
+    alignItems: 'center',
+    marginTop: spacing.xxxl,
+  },
   emptyText: {
-    textAlign: 'center',
-    color: '#888',
-    marginTop: 32,
+    ...typography.headline,
+    marginBottom: spacing.xs,
   },
-  row: {
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
+  emptySubtext: {
+    ...typography.footnote,
   },
-  rowMain: {
-    marginBottom: 8,
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  rowHeader: {
+  cardPressed: {
+    opacity: 0.7,
+  },
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  cardHeaderLeft: {
+    flexShrink: 1,
+  },
   stockCode: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.headline,
   },
   stockName: {
-    fontSize: 13,
-    color: '#555',
-  },
-  budget: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 4,
+    ...typography.subheadline,
   },
   priceBlock: {
     alignItems: 'flex-end',
   },
   priceText: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.headline,
   },
   changeText: {
-    fontSize: 12,
+    ...typography.footnote,
     marginTop: 2,
   },
   asOfText: {
-    fontSize: 10,
-    color: '#aaa',
+    ...typography.caption,
     marginTop: 2,
   },
   priceUp: {
-    color: '#c00',
+    color: colors.rise,
   },
   priceDown: {
-    color: '#0a7d2c',
+    color: colors.fall,
   },
   priceFlat: {
-    color: '#333',
+    color: colors.label,
   },
-  rowActions: {
+  cardFooter: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
   },
-  footer: {
-    padding: 16,
+  budget: {
+    ...typography.footnote,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
   },
   versionText: {
+    ...typography.caption,
     textAlign: 'center',
-    color: '#aaa',
-    fontSize: 12,
-    marginTop: 8,
+    marginTop: spacing.lg,
   },
 });

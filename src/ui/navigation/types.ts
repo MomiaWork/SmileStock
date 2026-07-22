@@ -1,5 +1,6 @@
 export interface WatchlistFormPrefill {
   stockCode?: string;
+  stockName?: string;
   spacingPercent: number;
   tierCount: number;
   entryConfirmEnabled: boolean;

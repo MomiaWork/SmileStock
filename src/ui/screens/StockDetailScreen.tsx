@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
-import { Alert, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getCurrentPrices, mergeLivePriceIntoHistory } from '../../data-fetch/current-price';
 import {
@@ -23,7 +23,11 @@ import type { Position } from '../../strategy-engine/pnl';
 import { classifyTrend, type TrendClassification } from '../../strategy-engine/trend-classifier';
 import type { PricePoint, StrategySignal } from '../../strategy-engine/types';
 import PriceLineChart from '../components/PriceLineChart';
+import PrimaryButton from '../components/PrimaryButton';
+import { InputRow } from '../components/Row';
+import Section from '../components/Section';
 import type { RootStackParamList } from '../navigation/types';
+import { colors, radius, spacing, typography } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'StockDetail'>;
 
@@ -49,6 +53,15 @@ const EXIT_ACTION_LABEL: Record<ExitAdvice['action'], string> = {
   exit_stop_loss: '🔴 建議停損出場',
   hold: '🟡 建議續抱',
 };
+
+function StatusRow({ title, subtitle }: { title: string; subtitle: string }): React.JSX.Element {
+  return (
+    <View style={styles.statusRow}>
+      <Text style={styles.statusTitle}>{title}</Text>
+      <Text style={styles.statusSubtitle}>{subtitle}</Text>
+    </View>
+  );
+}
 
 export default function StockDetailScreen({ route, navigation }: Props): React.JSX.Element {
   const { watchlistId } = route.params;
@@ -127,7 +140,9 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
 
   useFocusEffect(
     useCallback(() => {
-      void reload();
+      reload().catch((err) => {
+        Alert.alert('讀取股票資料失敗', err instanceof Error ? err.message : String(err));
+      });
     }, [reload]),
   );
 
@@ -167,136 +182,148 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
 
   if (!item) {
     return (
-      <View style={styles.container}>
-        <Text>載入中...</Text>
+      <View style={styles.loadingContainer}>
+        <Text style={typography.body}>載入中...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.sectionTitle}>價格走勢</Text>
-      <PriceLineChart history={history} />
-
-      <Text style={styles.sectionTitle}>目前趨勢</Text>
-      {trend && (
-        <View style={styles.statusRow}>
-          <Text style={styles.statusType}>{TREND_LABEL[trend.face]}</Text>
-          <Text style={styles.statusReason}>{trend.reason}</Text>
+      <Section title="價格走勢">
+        <View style={styles.chartCard}>
+          <PriceLineChart history={history} />
         </View>
+      </Section>
+
+      {trend && (
+        <Section title="目前趨勢">
+          <StatusRow title={TREND_LABEL[trend.face]} subtitle={trend.reason} />
+        </Section>
       )}
 
       {entryAdvices.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>進場建議</Text>
+        <Section title="進場建議">
           {entryAdvices.map(({ type, advice }) => (
-            <View key={type} style={styles.statusRow}>
-              <Text style={styles.statusType}>
-                [{type}] {ENTRY_ACTION_LABEL[advice.action]}
-              </Text>
-              <Text style={styles.statusReason}>{advice.reason}</Text>
-            </View>
+            <StatusRow
+              key={type}
+              title={`[${type}] ${ENTRY_ACTION_LABEL[advice.action]}`}
+              subtitle={advice.reason}
+            />
           ))}
-        </>
+        </Section>
       )}
 
-      <Text style={styles.sectionTitle}>目前策略狀態</Text>
-      {statuses.length === 0 && <Text style={styles.emptyText}>這檔股票沒有啟用任何策略</Text>}
-      {statuses.map((s, i) => (
-        <View key={i} style={styles.statusRow}>
-          <Text style={styles.statusType}>
-            [{s.type}] {s.signal.triggered ? '🔴 已觸發' : '⚪️ 未觸發'}
-          </Text>
-          <Text style={styles.statusReason}>{s.signal.reason}</Text>
-        </View>
-      ))}
+      <Section title="目前策略狀態">
+        {statuses.length === 0 ? (
+          <StatusRow title="沒有啟用任何策略" subtitle="到編輯股票頁面開啟策略後會顯示在這裡" />
+        ) : (
+          statuses.map((s, i) => (
+            <StatusRow
+              key={i}
+              title={`[${s.type}] ${s.signal.triggered ? '🔴 已觸發' : '⚪️ 未觸發'}`}
+              subtitle={s.signal.reason}
+            />
+          ))
+        )}
+      </Section>
 
-      <Text style={styles.sectionTitle}>持倉與損益</Text>
-      {position ? (
-        <View style={styles.statusRow}>
-          <Text style={styles.statusReason}>
-            持有 {position.quantity} 股，平均成本 {position.avgCost.toFixed(2)}
-          </Text>
-          {exitAdvice && (
-            <>
-              <Text
-                style={[
-                  styles.pnlText,
-                  exitAdvice.pnl.pnl >= 0 ? styles.pnlPositive : styles.pnlNegative,
-                ]}
-              >
-                目前市值 {exitAdvice.pnl.marketValue.toFixed(0)}，損益{' '}
-                {exitAdvice.pnl.pnl >= 0 ? '+' : ''}
-                {exitAdvice.pnl.pnl.toFixed(0)}（報酬率{' '}
-                {exitAdvice.pnl.returnRatePercent >= 0 ? '+' : ''}
-                {exitAdvice.pnl.returnRatePercent.toFixed(2)}%）
+      <Section title="持倉與損益">
+        {position ? (
+          <View style={styles.pnlCard}>
+            <Text style={styles.statusSubtitle}>
+              持有 {position.quantity} 股，平均成本 {position.avgCost.toFixed(2)}
+            </Text>
+            {exitAdvice && (
+              <>
+                <Text
+                  style={[
+                    styles.pnlText,
+                    exitAdvice.pnl.pnl >= 0 ? styles.pnlPositive : styles.pnlNegative,
+                  ]}
+                >
+                  目前市值 {exitAdvice.pnl.marketValue.toFixed(0)}，損益{' '}
+                  {exitAdvice.pnl.pnl >= 0 ? '+' : ''}
+                  {exitAdvice.pnl.pnl.toFixed(0)}（報酬率{' '}
+                  {exitAdvice.pnl.returnRatePercent >= 0 ? '+' : ''}
+                  {exitAdvice.pnl.returnRatePercent.toFixed(2)}%）
+                </Text>
+                <Text style={styles.statusTitle}>{EXIT_ACTION_LABEL[exitAdvice.action]}</Text>
+                <Text style={styles.statusSubtitle}>{exitAdvice.reason}</Text>
+              </>
+            )}
+          </View>
+        ) : (
+          <StatusRow title="目前沒有持倉" subtitle="記錄一筆買入交易後會顯示持倉與損益" />
+        )}
+      </Section>
+
+      <Section title="記錄交易">
+        <View style={styles.segmentRow}>
+          {(['buy', 'sell'] as const).map((side) => (
+            <Pressable
+              key={side}
+              onPress={() => setTradeSide(side)}
+              style={[styles.segment, tradeSide === side && styles.segmentActive]}
+            >
+              <Text style={[styles.segmentText, tradeSide === side && styles.segmentTextActive]}>
+                {side === 'buy' ? '買入' : '賣出'}
               </Text>
-              <Text style={styles.statusType}>{EXIT_ACTION_LABEL[exitAdvice.action]}</Text>
-              <Text style={styles.statusReason}>{exitAdvice.reason}</Text>
-            </>
-          )}
+            </Pressable>
+          ))}
         </View>
-      ) : (
-        <Text style={styles.emptyText}>目前沒有持倉</Text>
-      )}
-
-      <Text style={styles.sectionTitle}>記錄交易</Text>
-      <View style={styles.switchRow}>
-        <Button
-          title={tradeSide === 'buy' ? '● 買入' : '○ 買入'}
-          onPress={() => setTradeSide('buy')}
+        <InputRow
+          label="成交價"
+          value={tradePrice}
+          onChangeText={setTradePrice}
+          keyboardType="numeric"
         />
-        <Button
-          title={tradeSide === 'sell' ? '● 賣出' : '○ 賣出'}
-          onPress={() => setTradeSide('sell')}
+        <InputRow
+          label="股數"
+          value={tradeQuantity}
+          onChangeText={setTradeQuantity}
+          keyboardType="numeric"
+        />
+        <InputRow
+          label="備註"
+          placeholder="選填"
+          value={tradeNote}
+          onChangeText={setTradeNote}
+        />
+      </Section>
+      <View style={styles.primaryButtonWrap}>
+        <PrimaryButton
+          title={`新增${tradeSide === 'buy' ? '買入' : '賣出'}記錄`}
+          onPress={() => void handleAddTrade()}
+          loading={savingTrade}
         />
       </View>
-      <TextInput
-        style={styles.input}
-        placeholder="成交價"
-        value={tradePrice}
-        onChangeText={setTradePrice}
-        keyboardType="numeric"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="股數"
-        value={tradeQuantity}
-        onChangeText={setTradeQuantity}
-        keyboardType="numeric"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="備註（選填）"
-        value={tradeNote}
-        onChangeText={setTradeNote}
-      />
-      <Button
-        title={savingTrade ? '記錄中...' : `新增${tradeSide === 'buy' ? '買入' : '賣出'}記錄`}
-        onPress={handleAddTrade}
-        disabled={savingTrade}
-      />
 
-      <Text style={styles.sectionTitle}>交易紀錄</Text>
-      {trades.length === 0 && <Text style={styles.emptyText}>還沒有任何交易記錄</Text>}
-      {[...trades].reverse().map((t) => (
-        <View key={t.id} style={styles.historyRow}>
-          <Text style={styles.historyText}>
-            {t.tradedAt} [{t.side === 'buy' ? '買入' : '賣出'}] {t.quantity} 股 @ {t.price}
-            {t.note ? `（${t.note}）` : ''}
-          </Text>
-        </View>
-      ))}
+      <Section title="交易紀錄">
+        {trades.length === 0 ? (
+          <StatusRow title="還沒有任何交易記錄" subtitle="記錄買賣後會顯示在這裡" />
+        ) : (
+          [...trades]
+            .reverse()
+            .map((t) => (
+              <StatusRow
+                key={t.id}
+                title={`${t.side === 'buy' ? '買入' : '賣出'} ${t.quantity} 股 @ ${t.price}`}
+                subtitle={`${t.tradedAt}${t.note ? `　${t.note}` : ''}`}
+              />
+            ))
+        )}
+      </Section>
 
-      <Text style={styles.sectionTitle}>歷史觸發記錄</Text>
-      {notifications.length === 0 && <Text style={styles.emptyText}>還沒有發送過通知</Text>}
-      {notifications.map((n) => (
-        <View key={n.id} style={styles.historyRow}>
-          <Text style={styles.historyText}>
-            {n.sentAt} [{n.strategyType}] {n.signalKey}
-          </Text>
-        </View>
-      ))}
+      <Section title="歷史觸發記錄">
+        {notifications.length === 0 ? (
+          <StatusRow title="還沒有發送過通知" subtitle="策略觸發時會記錄在這裡" />
+        ) : (
+          notifications.map((n) => (
+            <StatusRow key={n.id} title={`[${n.strategyType}] ${n.signalKey}`} subtitle={n.sentAt} />
+          ))
+        )}
+      </Section>
     </ScrollView>
   );
 }
@@ -304,66 +331,75 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 16,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginTop: 20,
-    marginBottom: 8,
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emptyText: {
-    color: '#888',
-    fontSize: 13,
+  primaryButtonWrap: {
+    marginTop: -spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  chartCard: {
+    alignItems: 'center',
+    padding: spacing.md,
   },
   statusRow: {
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 6,
-    padding: 10,
-    marginBottom: 8,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
-  statusType: {
+  statusTitle: {
+    ...typography.body,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  statusReason: {
-    fontSize: 12,
-    color: '#555',
+  statusSubtitle: {
+    ...typography.footnote,
   },
-  historyRow: {
-    paddingVertical: 4,
-  },
-  historyText: {
-    fontSize: 12,
-    color: '#555',
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 8,
+  pnlCard: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   pnlText: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 6,
-    marginBottom: 4,
+    ...typography.headline,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
   },
   pnlPositive: {
-    color: '#0a7d2c',
+    color: colors.profit,
   },
   pnlNegative: {
-    color: '#c00',
+    color: colors.loss,
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  segment: {
+    flex: 1,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.fillSecondary,
+  },
+  segmentActive: {
+    backgroundColor: colors.tint,
+  },
+  segmentText: {
+    ...typography.footnote,
+    fontWeight: '600',
+    color: colors.secondaryLabel,
+  },
+  segmentTextActive: {
+    color: '#fff',
   },
 });
