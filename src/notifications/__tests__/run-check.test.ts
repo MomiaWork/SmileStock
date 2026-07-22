@@ -42,7 +42,7 @@ beforeEach(() => {
   mockGetCurrentPrices.mockResolvedValue({});
 });
 
-test('觸發的策略會呼叫 notifyIfNew，並帶入包含日期的 signalKey', async () => {
+test('策略觸發但趨勢安全閥尚未確認（wait）也會呼叫 notifyIfNew，signalKey 帶入 action', async () => {
   mockGetWatchlist.mockResolvedValue([
     {
       id: 1,
@@ -61,6 +61,7 @@ test('觸發的策略會呼叫 notifyIfNew，並帶入包含日期的 signalKey'
       enabled: true,
     },
   ]);
+  // 只有 1 筆資料，trend-classifier 資料不足回傳 neutral（非笑臉），所以是 wait 不是 enter
   mockGetPriceHistory.mockResolvedValue(history([90]));
 
   const results = await checkWatchlistAndNotify(fakeDb);
@@ -68,12 +69,49 @@ test('觸發的策略會呼叫 notifyIfNew，並帶入包含日期的 signalKey'
   expect(results).toHaveLength(1);
   expect(results[0].signal.triggered).toBe(true);
   expect(results[0].signal.tierIndex).toBe(2);
+  expect(results[0].advice.action).toBe('wait');
   expect(mockNotifyIfNew).toHaveBeenCalledWith(
     fakeDb,
     expect.objectContaining({
       watchlistId: 1,
       strategyConfigId: 10,
-      signalKey: 'grid:tier2:2026-07-16',
+      signalKey: 'grid:wait:tier2:2026-07-16',
+    }),
+  );
+});
+
+test('策略觸發且趨勢已確認止穩反彈（enter）時推播文案不同，signalKey 也不同', async () => {
+  mockGetWatchlist.mockResolvedValue([
+    {
+      id: 1,
+      stockCode: 'TEST_GRID',
+      stockName: '測試',
+      budget: 10000,
+      priceCheckIntervalSec: null,
+    },
+  ]);
+  mockGetEnabledStrategyConfigs.mockResolvedValue([
+    {
+      id: 10,
+      watchlistId: 1,
+      type: 'grid',
+      params: { anchorPrice: 100, budget: 10000, spacingPercent: 5, tierCount: 5 },
+      enabled: true,
+    },
+  ]);
+  // 前低 86（跌破第 2 檔門檻 90），之後連續兩天收高 87 -> 89，且資料筆數 >= 趨勢判斷預設所需的 11 筆
+  mockGetPriceHistory.mockResolvedValue(
+    history([120, 118, 116, 114, 112, 110, 105, 100, 95, 90, 86, 87, 89]),
+  );
+
+  const results = await checkWatchlistAndNotify(fakeDb);
+
+  expect(results[0].advice.action).toBe('enter');
+  expect(mockNotifyIfNew).toHaveBeenCalledWith(
+    fakeDb,
+    expect.objectContaining({
+      signalKey: expect.stringContaining('grid:enter:tier2:'),
+      title: expect.stringContaining('🟢'),
     }),
   );
 });
@@ -96,6 +134,7 @@ test('未觸發的策略不會呼叫 notifyIfNew', async () => {
   const results = await checkWatchlistAndNotify(fakeDb);
 
   expect(results[0].signal.triggered).toBe(false);
+  expect(results[0].advice.action).toBe('no_signal');
   expect(mockNotifyIfNew).not.toHaveBeenCalled();
 });
 
@@ -157,7 +196,7 @@ test('price_history 最新收盤價還沒跌破門檻，但盤中最新報價已
   expect(results[0].signal.tierIndex).toBe(2);
   expect(mockNotifyIfNew).toHaveBeenCalledWith(
     fakeDb,
-    expect.objectContaining({ signalKey: expect.stringContaining('grid:tier2:') }),
+    expect.objectContaining({ signalKey: expect.stringContaining(':tier2:') }),
   );
 });
 

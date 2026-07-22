@@ -19,7 +19,6 @@ import {
 import { adviseEntry, type EntryAdvice } from '../../strategy-engine/entry-advisor';
 import { evaluateStrategy } from '../../strategy-engine/engine';
 import { adviseExit, type ExitAdvice } from '../../strategy-engine/exit-advisor';
-import type { GridStrategyConfig } from '../../strategy-engine/grid-strategy';
 import type { Position } from '../../strategy-engine/pnl';
 import { classifyTrend, type TrendClassification } from '../../strategy-engine/trend-classifier';
 import type { PricePoint, StrategySignal } from '../../strategy-engine/types';
@@ -58,7 +57,7 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   const [statuses, setStatuses] = useState<StrategyStatus[]>([]);
   const [notifications, setNotifications] = useState<NotificationHistoryEntry[]>([]);
   const [trend, setTrend] = useState<TrendClassification | null>(null);
-  const [entryAdvice, setEntryAdvice] = useState<EntryAdvice | null>(null);
+  const [entryAdvices, setEntryAdvices] = useState<{ type: string; advice: EntryAdvice }[]>([]);
   const [position, setPosition] = useState<Position | null>(null);
   const [exitAdvice, setExitAdvice] = useState<ExitAdvice | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -97,9 +96,11 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
 
     setTrend(classifyTrend(adviceHistory));
 
-    const gridConfig = configs.find((c) => c.type === 'grid');
-    setEntryAdvice(
-      gridConfig ? adviseEntry(adviceHistory, gridConfig.params as GridStrategyConfig) : null,
+    setEntryAdvices(
+      configs.map((config) => ({
+        type: config.type,
+        advice: adviseEntry(adviceHistory, { type: config.type, params: config.params }),
+      })),
     );
 
     const currentPosition = await getCurrentPosition(db, watchlistId);
@@ -181,13 +182,17 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
         </View>
       )}
 
-      {entryAdvice && (
+      {entryAdvices.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>進場建議</Text>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusType}>{ENTRY_ACTION_LABEL[entryAdvice.action]}</Text>
-            <Text style={styles.statusReason}>{entryAdvice.reason}</Text>
-          </View>
+          {entryAdvices.map(({ type, advice }) => (
+            <View key={type} style={styles.statusRow}>
+              <Text style={styles.statusType}>
+                [{type}] {ENTRY_ACTION_LABEL[advice.action]}
+              </Text>
+              <Text style={styles.statusReason}>{advice.reason}</Text>
+            </View>
+          ))}
         </>
       )}
 

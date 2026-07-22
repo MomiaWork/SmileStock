@@ -1,5 +1,7 @@
 import { adviseEntry } from '../entry-advisor';
 import type { GridStrategyConfig } from '../grid-strategy';
+import type { MaCrossStrategyConfig } from '../ma-cross-strategy';
+import type { RsiStrategyConfig } from '../rsi-strategy';
 import type { PricePoint } from '../types';
 
 function closesToHistory(closes: number[]): PricePoint[] {
@@ -19,13 +21,16 @@ const gridConfig: GridStrategyConfig = {
   tierCount: 5,
 };
 
+const rsiConfig: RsiStrategyConfig = { period: 4, threshold: 40 };
+const maCrossConfig: MaCrossStrategyConfig = { shortPeriod: 2, longPeriod: 4 };
+
 const trendConfig = { lookbackDays: 5, confirmDays: 2 };
 
 describe('adviseEntry', () => {
   test('網格尚未觸發時回傳 no_signal', () => {
     const advice = adviseEntry(
       closesToHistory([100, 100, 100, 100, 100, 100, 100]),
-      gridConfig,
+      { type: 'grid', params: gridConfig },
       trendConfig,
     );
     expect(advice.action).toBe('no_signal');
@@ -36,7 +41,7 @@ describe('adviseEntry', () => {
     // 觸發第 1 檔（<=95），且最後一筆創新低
     const advice = adviseEntry(
       closesToHistory([120, 110, 105, 100, 96, 94]),
-      gridConfig,
+      { type: 'grid', params: gridConfig },
       trendConfig,
     );
     expect(advice.action).toBe('wait');
@@ -48,7 +53,7 @@ describe('adviseEntry', () => {
     // 前低 86（已跌破第 2 檔門檻 90），之後連續兩天收高 87 -> 89
     const advice = adviseEntry(
       closesToHistory([120, 110, 100, 95, 90, 86, 87, 89]),
-      gridConfig,
+      { type: 'grid', params: gridConfig },
       trendConfig,
     );
     expect(advice.action).toBe('enter');
@@ -60,9 +65,52 @@ describe('adviseEntry', () => {
     // 離開低點但沒有連續上漲
     const advice = adviseEntry(
       closesToHistory([120, 110, 100, 95, 90, 93, 92]),
-      gridConfig,
+      { type: 'grid', params: gridConfig },
       trendConfig,
     );
     expect(advice.action).toBe('wait');
+  });
+
+  test('RSI 未觸發時回傳 no_signal', () => {
+    const advice = adviseEntry(
+      closesToHistory([100, 101, 102, 103, 104]),
+      { type: 'rsi', params: rsiConfig },
+      trendConfig,
+    );
+    expect(advice.action).toBe('no_signal');
+  });
+
+  test('RSI 觸發但趨勢仍破底（哭臉）時建議觀望，不給投入金額', () => {
+    // 持續下跌把 RSI 壓到門檻以下，且最後一筆創新低
+    const advice = adviseEntry(
+      closesToHistory([120, 110, 105, 100, 96, 94]),
+      { type: 'rsi', params: rsiConfig },
+      trendConfig,
+    );
+    expect(advice.action).toBe('wait');
+    expect(advice.amount).toBeUndefined();
+    expect(advice.reason).toContain('觀望');
+  });
+
+  test('RSI 觸發且趨勢確認止穩反彈（笑臉）時建議進場，RSI 沒有金額概念維持 undefined', () => {
+    const advice = adviseEntry(
+      closesToHistory([120, 110, 100, 95, 90, 86, 87, 89]),
+      { type: 'rsi', params: rsiConfig },
+      trendConfig,
+    );
+    expect(advice.action).toBe('enter');
+    expect(advice.amount).toBeUndefined();
+    expect(advice.reason).toContain('進場');
+  });
+
+  test('均線交叉觸發且趨勢確認止穩反彈（笑臉）時建議進場', () => {
+    // 短均線(2)在最後一天黃金交叉長均線(4)，且離開低點後連續收高
+    const advice = adviseEntry(
+      closesToHistory([100, 95, 88, 80, 78, 85, 100]),
+      { type: 'ma_cross', params: maCrossConfig },
+      trendConfig,
+    );
+    expect(advice.action).toBe('enter');
+    expect(advice.amount).toBeUndefined();
   });
 });
