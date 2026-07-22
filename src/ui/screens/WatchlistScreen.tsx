@@ -144,6 +144,10 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
       <View style={styles.toolbar}>
         <Button title="設定" onPress={() => navigation.navigate('Settings')} />
         <Button
+          title="策略建議"
+          onPress={() => navigation.navigate('StrategyRecommendation')}
+        />
+        <Button
           title={checking ? '檢查中...' : '立即檢查'}
           onPress={handleImmediateCheck}
           disabled={checking}

@@ -188,7 +188,7 @@ const BACKFILL_MAX_MONTHS_BACK = 6;
 
 /**
  * 回補單一股票至少 minTradingDays 筆歷史收盤資料（由當月往前逐月抓取，最多回溯
- * BACKFILL_MAX_MONTHS_BACK 個月）。用於新增股票時讓 RSI/均線策略不用乾等資料逐日累積。
+ * BACKFILL_MAX_MONTHS_BACK 個月）。用於新增股票時讓進場確認濾網不用乾等資料逐日累積。
  * 若回溯到底仍不足 minTradingDays 筆（例如剛掛牌不久的股票），就回傳目前抓得到的全部，
  * 交給 strategy-engine 自行回報「資料不足」，這裡不補算不假設。
  */
@@ -203,6 +203,30 @@ export async function fetchHistoricalDailyQuotes(
     const monthQuotes = await fetchMonthlyQuotes(code, toYyyymm01(cursor));
     collected.unshift(...monthQuotes);
     if (collected.length >= minTradingDays) break;
+    cursor.setMonth(cursor.getMonth() - 1);
+  }
+
+  collected.sort((a, b) => a.date.localeCompare(b.date));
+  return collected;
+}
+
+/**
+ * 抓取單一股票近 months 個月的歷史資料，用於「策略建議」畫面的回測，跟
+ * fetchHistoricalDailyQuotes（新增股票時的小量快速回補，受 BACKFILL_MAX_MONTHS_BACK
+ * 限制）是兩個獨立用途，互不影響、互不共用限制。抓到的資料只在記憶體中用於回測計算，
+ * 呼叫端不應該把它寫進 price_history（那是給已追蹤股票逐日累積用的）。
+ * 回溯到掛牌前的月份，fetchMonthlyQuotes 會回傳空陣列（非錯誤），不影響其餘月份的抓取。
+ */
+export async function fetchExtendedHistoricalQuotes(
+  code: string,
+  months: number,
+): Promise<TwseDailyQuote[]> {
+  const collected: TwseDailyQuote[] = [];
+  const cursor = new Date();
+
+  for (let monthsBack = 0; monthsBack < months; monthsBack += 1) {
+    const monthQuotes = await fetchMonthlyQuotes(code, toYyyymm01(cursor));
+    collected.unshift(...monthQuotes);
     cursor.setMonth(cursor.getMonth() - 1);
   }
 

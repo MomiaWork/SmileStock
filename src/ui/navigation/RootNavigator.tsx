@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import SettingsScreen from '../screens/SettingsScreen';
 import StockDetailScreen from '../screens/StockDetailScreen';
+import StrategyRecommendationScreen from '../screens/StrategyRecommendationScreen';
 import WatchlistFormScreen from '../screens/WatchlistFormScreen';
 import WatchlistScreen from '../screens/WatchlistScreen';
 import type { RootStackParamList } from './types';
@@ -21,6 +22,11 @@ export default function RootNavigator(): React.JSX.Element {
         <Stack.Screen name="WatchlistForm" component={WatchlistFormScreen} />
         <Stack.Screen name="StockDetail" component={StockDetailScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '設定' }} />
+        <Stack.Screen
+          name="StrategyRecommendation"
+          component={StrategyRecommendationScreen}
+          options={{ title: '策略建議' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

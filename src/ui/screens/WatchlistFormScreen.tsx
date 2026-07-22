@@ -25,21 +25,33 @@ function toNumberOrUndefined(text: string): number | undefined {
 export default function WatchlistFormScreen({ route, navigation }: Props): React.JSX.Element {
   const watchlistId = route.params?.watchlistId;
   const isEditing = watchlistId !== undefined;
+  // 從「策略建議」畫面帶參數過來時預填——只在新增（非編輯）情境套用，
+  // 錨定價留給使用者自己填當下價格，不從建議帶入（建議是用回測區間第一天的價格算的，
+  // 跟使用者現在要新增股票的當下價格無關）
+  const prefill = isEditing ? undefined : route.params?.prefill;
 
-  const [stockCode, setStockCode] = useState('');
+  const [stockCode, setStockCode] = useState(prefill?.stockCode ?? '');
   const [stockName, setStockName] = useState('');
   const [budget, setBudget] = useState('10000');
   const [intervalSec, setIntervalSec] = useState('');
-  const [takeProfitPercent, setTakeProfitPercent] = useState('');
-  const [stopLossPercent, setStopLossPercent] = useState('');
+  const [takeProfitPercent, setTakeProfitPercent] = useState(
+    prefill ? String(prefill.takeProfitPercent) : '',
+  );
+  const [stopLossPercent, setStopLossPercent] = useState(
+    prefill ? String(prefill.stopLossPercent) : '',
+  );
 
-  const [gridEnabled, setGridEnabled] = useState(false);
+  const [gridEnabled, setGridEnabled] = useState(prefill !== undefined);
   const [gridAnchorPrice, setGridAnchorPrice] = useState('');
   const [gridBudget, setGridBudget] = useState('');
-  const [gridSpacingPercent, setGridSpacingPercent] = useState('5');
-  const [gridTierCount, setGridTierCount] = useState('5');
+  const [gridSpacingPercent, setGridSpacingPercent] = useState(
+    prefill ? String(prefill.spacingPercent) : '5',
+  );
+  const [gridTierCount, setGridTierCount] = useState(prefill ? String(prefill.tierCount) : '5');
 
-  const [entryConfirmEnabled, setEntryConfirmEnabled] = useState(false);
+  const [entryConfirmEnabled, setEntryConfirmEnabled] = useState(
+    prefill?.entryConfirmEnabled ?? false,
+  );
 
   const [loading, setLoading] = useState(isEditing);
 

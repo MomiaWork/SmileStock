@@ -1,9 +1,20 @@
-import { fetchRealtimeQuotes } from '../twse-client';
+import { fetchExtendedHistoricalQuotes, fetchRealtimeQuotes } from '../twse-client';
 
 function mockMisResponse(msgArray: unknown[]): void {
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,
     json: async () => ({ msgArray }),
+  }) as unknown as typeof fetch;
+}
+
+function stockDayRow(date: string, close: string): string[] {
+  return [date, '10,000,000', '1,000,000,000', close, close, close, close, '0.00', '5000'];
+}
+
+function mockStockDayResponse(stat: string, rows: string[][]): void {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ stat, data: rows }),
   }) as unknown as typeof fetch;
 }
 
@@ -61,4 +72,35 @@ test('昨收 y 本身格式不正確（不只是缺席）時，整筆略過而�
   const quotes = await fetchRealtimeQuotes(['2330']);
 
   expect(quotes).toHaveLength(0);
+});
+
+describe('fetchExtendedHistoricalQuotes', () => {
+  test('依 months 逐月抓取，每月一次 fetch，結果依日期排序', async () => {
+    mockStockDayResponse('OK', [stockDayRow('115/07/01', '100'), stockDayRow('115/07/02', '101')]);
+
+    const quotes = await fetchExtendedHistoricalQuotes('2330', 3);
+
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(quotes).toHaveLength(6);
+    const dates = quotes.map((q) => q.date);
+    expect(dates).toEqual([...dates].sort());
+  });
+
+  test('回溯到掛牌前的月份（stat 非 OK）回傳空陣列，不中斷其餘月份的抓取', async () => {
+    let call = 0;
+    global.fetch = jest.fn().mockImplementation(() => {
+      call += 1;
+      // 最近 2 個月有資料，更早的月份（掛牌前）stat 非 OK
+      const isRecent = call <= 2;
+      return Promise.resolve({
+        ok: true,
+        json: async () => (isRecent ? { stat: 'OK', data: [stockDayRow('115/07/01', '100')] } : { stat: '' }),
+      });
+    }) as unknown as typeof fetch;
+
+    const quotes = await fetchExtendedHistoricalQuotes('2330', 4);
+
+    expect(global.fetch).toHaveBeenCalledTimes(4);
+    expect(quotes).toHaveLength(2);
+  });
 });
