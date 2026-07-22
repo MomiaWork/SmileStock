@@ -1,6 +1,10 @@
 /* eslint-disable import/first -- jest.mock calls must precede the imports they mock */
 jest.mock('../../db/watchlist-repo');
 jest.mock('../../db/price-history-repo');
+jest.mock('../../data-fetch/current-price', () => ({
+  ...jest.requireActual('../../data-fetch/current-price'),
+  getCurrentPrices: jest.fn(),
+}));
 jest.mock('expo-file-system', () => ({
   File: jest.fn(),
   Paths: { cache: {} },
@@ -16,6 +20,7 @@ jest.mock('../../db/settings-repo');
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { getCurrentPrices } from '../../data-fetch/current-price';
 import { getPriceHistory } from '../../db/price-history-repo';
 import { getEnabledStrategyConfigs, getWatchlist } from '../../db/watchlist-repo';
 import type { PricePoint } from '../../strategy-engine/types';
@@ -32,6 +37,7 @@ const fakeDb = {} as SQLiteDatabase;
 const mockGetWatchlist = getWatchlist as jest.Mock;
 const mockGetEnabledStrategyConfigs = getEnabledStrategyConfigs as jest.Mock;
 const mockGetPriceHistory = getPriceHistory as jest.Mock;
+const mockGetCurrentPrices = getCurrentPrices as jest.Mock;
 
 function history(closes: number[]): PricePoint[] {
   return closes.map((close, i) => ({
@@ -45,6 +51,7 @@ function history(closes: number[]): PricePoint[] {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockGetCurrentPrices.mockResolvedValue({});
 });
 
 describe('buildExportSummary', () => {
@@ -88,6 +95,43 @@ describe('buildExportSummary', () => {
 
     expect(summaries[0].latestPrice).toBeNull();
     expect(summaries[0].strategies).toHaveLength(0);
+  });
+
+  test('有盤中最新報價時，latestPrice 用即時報價而非 price_history 最新收盤價', async () => {
+    mockGetWatchlist.mockResolvedValue([
+      {
+        id: 1,
+        stockCode: 'TEST_GRID',
+        stockName: '測試',
+        budget: 10000,
+        priceCheckIntervalSec: null,
+      },
+    ]);
+    mockGetEnabledStrategyConfigs.mockResolvedValue([
+      {
+        id: 10,
+        watchlistId: 1,
+        type: 'grid',
+        params: { anchorPrice: 100, budget: 10000, spacingPercent: 5, tierCount: 5 },
+        enabled: true,
+      },
+    ]);
+    // 最新收盤價 100（尚未跌破第 1 檔門檻 95），盤中最新報價已經跌到 89（跌破第 2 檔門檻 90）
+    mockGetPriceHistory.mockResolvedValue(history([100]));
+    mockGetCurrentPrices.mockResolvedValue({
+      TEST_GRID: {
+        price: 89,
+        changeAmount: -11,
+        changePercent: -11,
+        isRealtime: true,
+        asOf: '10:00:00',
+      },
+    });
+
+    const summaries = await buildExportSummary(fakeDb);
+
+    expect(summaries[0].latestPrice).toBe(89);
+    expect(summaries[0].strategies[0].triggered).toBe(true);
   });
 });
 

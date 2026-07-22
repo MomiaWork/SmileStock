@@ -3,6 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 import { Alert, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { getCurrentPrices, mergeLivePriceIntoHistory } from '../../data-fetch/current-price';
 import {
   getNotificationHistory,
   type NotificationHistoryEntry,
@@ -77,27 +78,35 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
     navigation.setOptions({ title: `${watchlistItem.stockCode} ${watchlistItem.stockName}` });
 
     const priceHistory = await getPriceHistory(db, watchlistItem.stockCode);
-    setHistory(priceHistory);
+
+    // 走勢圖、進場/出場建議、趨勢與策略狀態都要依「現在」判斷，不能卡在 price_history
+    // 最新一筆可能是前一交易日（甚至今天背景同步還沒跑過）的收盤價，所以統一併入盤中最新報價
+    const currentPriceInfo = (
+      await getCurrentPrices(db, [watchlistItem.stockCode])
+    )[watchlistItem.stockCode];
+    const adviceHistory = mergeLivePriceIntoHistory(priceHistory, currentPriceInfo ?? null);
+    setHistory(adviceHistory);
 
     const configs = await getEnabledStrategyConfigs(db, watchlistId);
     setStatuses(
       configs.map((config) => ({
         type: config.type,
-        signal: evaluateStrategy(priceHistory, { type: config.type, params: config.params }),
+        signal: evaluateStrategy(adviceHistory, { type: config.type, params: config.params }),
       })),
     );
 
-    setTrend(classifyTrend(priceHistory));
+    setTrend(classifyTrend(adviceHistory));
 
     const gridConfig = configs.find((c) => c.type === 'grid');
     setEntryAdvice(
-      gridConfig ? adviseEntry(priceHistory, gridConfig.params as GridStrategyConfig) : null,
+      gridConfig ? adviseEntry(adviceHistory, gridConfig.params as GridStrategyConfig) : null,
     );
 
     const currentPosition = await getCurrentPosition(db, watchlistId);
     setPosition(currentPosition);
     const currentPrice =
-      priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].close : null;
+      currentPriceInfo?.price ??
+      (priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].close : null);
     setExitAdvice(
       currentPosition && currentPrice !== null
         ? adviseExit(currentPosition, currentPrice, {

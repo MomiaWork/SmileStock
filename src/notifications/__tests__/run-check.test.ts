@@ -1,6 +1,10 @@
 /* eslint-disable import/first -- jest.mock calls must precede the imports they mock */
 jest.mock('../../db/watchlist-repo');
 jest.mock('../../db/price-history-repo');
+jest.mock('../../data-fetch/current-price', () => ({
+  ...jest.requireActual('../../data-fetch/current-price'),
+  getCurrentPrices: jest.fn(),
+}));
 jest.mock('../local-notification', () => ({
   notifyIfNew: jest.fn(),
   requestNotificationPermission: jest.fn(),
@@ -8,6 +12,7 @@ jest.mock('../local-notification', () => ({
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { getCurrentPrices } from '../../data-fetch/current-price';
 import { getPriceHistory } from '../../db/price-history-repo';
 import { getEnabledStrategyConfigs, getWatchlist } from '../../db/watchlist-repo';
 import type { PricePoint } from '../../strategy-engine/types';
@@ -18,6 +23,7 @@ const fakeDb = {} as SQLiteDatabase;
 const mockGetWatchlist = getWatchlist as jest.Mock;
 const mockGetEnabledStrategyConfigs = getEnabledStrategyConfigs as jest.Mock;
 const mockGetPriceHistory = getPriceHistory as jest.Mock;
+const mockGetCurrentPrices = getCurrentPrices as jest.Mock;
 const mockNotifyIfNew = notifyIfNew as jest.Mock;
 
 function history(closes: number[]): PricePoint[] {
@@ -33,6 +39,7 @@ function history(closes: number[]): PricePoint[] {
 beforeEach(() => {
   jest.clearAllMocks();
   mockNotifyIfNew.mockResolvedValue(true);
+  mockGetCurrentPrices.mockResolvedValue({});
 });
 
 test('觸發的策略會呼叫 notifyIfNew，並帶入包含日期的 signalKey', async () => {
@@ -117,6 +124,41 @@ test('notifyIfNew 回傳 false（已通知過）時，結果會標記 notified=f
   const results = await checkWatchlistAndNotify(fakeDb);
 
   expect(results[0].notified).toBe(false);
+});
+
+test('price_history 最新收盤價還沒跌破門檻，但盤中最新報價已經跌破時，依即時報價觸發', async () => {
+  mockGetWatchlist.mockResolvedValue([
+    { id: 1, stockCode: 'TEST_GRID', stockName: '測試', budget: 10000, priceCheckIntervalSec: null },
+  ]);
+  mockGetEnabledStrategyConfigs.mockResolvedValue([
+    {
+      id: 10,
+      watchlistId: 1,
+      type: 'grid',
+      params: { anchorPrice: 100, budget: 10000, spacingPercent: 5, tierCount: 5 },
+      enabled: true,
+    },
+  ]);
+  // 最新收盤價 100（尚未跌破第 1 檔門檻 95），但盤中最新報價已經跌到 89（跌破第 2 檔門檻 90）
+  mockGetPriceHistory.mockResolvedValue(history([100]));
+  mockGetCurrentPrices.mockResolvedValue({
+    TEST_GRID: {
+      price: 89,
+      changeAmount: -11,
+      changePercent: -11,
+      isRealtime: true,
+      asOf: '10:00:00',
+    },
+  });
+
+  const results = await checkWatchlistAndNotify(fakeDb);
+
+  expect(results[0].signal.triggered).toBe(true);
+  expect(results[0].signal.tierIndex).toBe(2);
+  expect(mockNotifyIfNew).toHaveBeenCalledWith(
+    fakeDb,
+    expect.objectContaining({ signalKey: expect.stringContaining('grid:tier2:') }),
+  );
 });
 
 test('某一檔股票的 notifyIfNew 失敗時，不會中斷其他股票的檢查', async () => {

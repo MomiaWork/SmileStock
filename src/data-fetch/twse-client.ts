@@ -79,11 +79,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(url: string): Promise<unknown> {
+async function fetchWithRetry(url: string, init?: RequestInit): Promise<unknown> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, init);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status} ${res.statusText}`);
       }
@@ -208,6 +208,133 @@ export async function fetchHistoricalDailyQuotes(
 
   collected.sort((a, b) => a.date.localeCompare(b.date));
   return collected;
+}
+
+const MIS_STOCK_INFO_URL = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp';
+const MIS_REFERER = 'https://mis.twse.com.tw/stock/index.jsp';
+
+interface RawMisRow {
+  c: string;
+  n: string;
+  z: string;
+  y: string;
+  d: string;
+  t: string;
+  /** 集合競價預估成交價，z 為 "-" 時的第一層 fallback */
+  pz?: string;
+  /** 試撮合價，pz 也拿不到時的第二層 fallback */
+  oz?: string;
+  /** 五檔買價，pipe-separated，取第一檔算買賣中價 */
+  b?: string;
+  /** 五檔賣價，pipe-separated，取第一檔算買賣中價 */
+  a?: string;
+}
+
+function isRawMisRow(value: unknown): value is RawMisRow {
+  if (typeof value !== 'object' || value === null) return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.c === 'string' &&
+    typeof r.n === 'string' &&
+    typeof r.z === 'string' &&
+    typeof r.y === 'string' &&
+    typeof r.d === 'string' &&
+    typeof r.t === 'string'
+  );
+}
+
+interface RawMisResponse {
+  msgArray?: unknown;
+}
+
+function isRawMisResponse(value: unknown): value is RawMisResponse {
+  return typeof value === 'object' && value !== null;
+}
+
+export interface TwseRealtimeQuote {
+  code: string;
+  name: string;
+  /** 尚未有成交（如剛開盤、或該次查詢暫時沒有快取到成交價）時為 null，呼叫端應 fallback 用 previousClose 或每日收盤資料 */
+  lastPrice: number | null;
+  previousClose: number;
+  time: string;
+  date: string;
+}
+
+/** row 裡單一價格欄位可能是 "-" 或缺席（代表沒有值），統一轉成 number | null，不視為格式錯誤 */
+function parseOptionalPriceField(value: string | undefined): number | null {
+  if (value === undefined || value === '-' || value === '') return null;
+  const n = Number(value.replace(/,/g, ''));
+  return Number.isNaN(n) ? null : n;
+}
+
+/** b/a 為五檔報價，pipe-separated 由佳到差，取第一檔（最佳買/賣價）算中價 */
+function bestBidAskMid(b: string | undefined, a: string | undefined): number | null {
+  const bid = parseOptionalPriceField(b?.split('_')[0]);
+  const ask = parseOptionalPriceField(a?.split('_')[0]);
+  if (bid === null || ask === null) return null;
+  return (bid + ask) / 2;
+}
+
+/**
+ * 盤中沒有成交（z 為 "-"）時常發生在低流動性標的，此時依序嘗試集合競價預估價（pz）、
+ * 試撮合價（oz）、買賣中價，都沒有才用昨收（y）；比直接判定「沒有即時資料」更準，
+ * 避免這類標的的目前價格顯示卡在呼叫端 fallback 的每日收盤價（可能是好幾天前的收盤）。
+ */
+function resolveLastPrice(row: RawMisRow): number | null {
+  return (
+    parseOptionalPriceField(row.z) ??
+    parseOptionalPriceField(row.pz) ??
+    parseOptionalPriceField(row.oz) ??
+    bestBidAskMid(row.b, row.a) ??
+    parseOptionalPriceField(row.y)
+  );
+}
+
+function toRealtimeQuote(row: RawMisRow): TwseRealtimeQuote {
+  return {
+    code: row.c,
+    name: row.n,
+    lastPrice: resolveLastPrice(row),
+    previousClose: parseNumberField(row.y, 'y', row.c),
+    time: row.t,
+    date: `${row.d.slice(0, 4)}-${row.d.slice(4, 6)}-${row.d.slice(6, 8)}`,
+  };
+}
+
+/**
+ * 抓取盤中最新成交價（實測有數秒~數分鐘延遲，非逐筆即時）。這是 TWSE 自家看盤網頁
+ * 使用的端點（mis.twse.com.tw），不在官方文件化的 openapi.twse.com.tw v1 OpenAPI 清單內，
+ * 格式與穩定性都沒有 v1 API 有保證；同一代號在不同次查詢也實測到 z（成交價）會忽有忽無，
+ * 推測是後端多節點快取不同步，不是單純的 session 沒建立好。
+ *
+ * 純粹用於畫面顯示「目前價格」，不寫入 price_history、不影響策略引擎判斷。z（成交價）拿不到
+ * 時（常見於低流動性標的），resolveLastPrice 會依序退而求其次用 pz/oz/買賣中價/昨收，
+ * 而不是直接判定「沒有即時資料」——避免目前價格顯示卡在呼叫端 fallback 的每日收盤價
+ * （可能是好幾天前的收盤）。找不到的代號才跳過該筆，不丟整批的錯；這個端點本質上是
+ * best-effort，跟 fetchDailyQuotes（策略引擎的資料源，格式錯誤要明確丟出）性質不同。
+ */
+export async function fetchRealtimeQuotes(codes: string[]): Promise<TwseRealtimeQuote[]> {
+  if (codes.length === 0) return [];
+
+  const exCh = codes.map((code) => `tse_${code}.tw`).join('|');
+  const url = `${MIS_STOCK_INFO_URL}?ex_ch=${encodeURIComponent(exCh)}&json=1&delay=0`;
+  const raw = await fetchWithRetry(url, { headers: { Referer: MIS_REFERER } });
+
+  if (!isRawMisResponse(raw) || !Array.isArray(raw.msgArray)) {
+    throw new Error('twse-client: TWSE 即時報價回傳格式不正確');
+  }
+
+  const quotes: TwseRealtimeQuote[] = [];
+  for (const row of raw.msgArray) {
+    if (!isRawMisRow(row)) continue;
+    try {
+      quotes.push(toRealtimeQuote(row));
+    } catch {
+      continue;
+    }
+  }
+  return quotes;
 }
 
 /**

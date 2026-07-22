@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Linking } from 'react-native';
 
+import { getCurrentPrices, mergeLivePriceIntoHistory } from '../data-fetch/current-price';
 import { getPriceHistory } from '../db/price-history-repo';
 import { getClaudeShortcutName } from '../db/settings-repo';
 import { getEnabledStrategyConfigs, getWatchlist } from '../db/watchlist-repo';
@@ -20,14 +21,23 @@ export interface StockExportSummary {
   }[];
 }
 
-/** 讀 watchlist -> 對每檔股票的每個啟用策略呼叫 engine.ts，組成匯出用的摘要資料 */
+/**
+ * 讀 watchlist -> 對每檔股票的每個啟用策略呼叫 engine.ts，組成匯出用的摘要資料。
+ * 併入盤中最新報價後才算策略訊號，避免匯出給 Claude 分析的「最新價格」卡在
+ * price_history 最新一筆（可能是前一交易日）的收盤價。
+ */
 export async function buildExportSummary(db: SQLiteDatabase): Promise<StockExportSummary[]> {
   const watchlist = await getWatchlist(db);
+  const currentPrices = await getCurrentPrices(
+    db,
+    watchlist.map((item) => item.stockCode),
+  );
   const summaries: StockExportSummary[] = [];
 
   for (const item of watchlist) {
     const history = await getPriceHistory(db, item.stockCode);
-    const latest = history[history.length - 1];
+    const adviceHistory = mergeLivePriceIntoHistory(history, currentPrices[item.stockCode] ?? null);
+    const latest = adviceHistory[adviceHistory.length - 1];
     const configs = await getEnabledStrategyConfigs(db, item.id);
 
     summaries.push({
@@ -36,7 +46,10 @@ export async function buildExportSummary(db: SQLiteDatabase): Promise<StockExpor
       latestPrice: latest?.close ?? null,
       latestDate: latest?.date ?? null,
       strategies: configs.map((config) => {
-        const signal = evaluateStrategy(history, { type: config.type, params: config.params });
+        const signal = evaluateStrategy(adviceHistory, {
+          type: config.type,
+          params: config.params,
+        });
         return { type: config.type, triggered: signal.triggered, reason: signal.reason };
       }),
     });

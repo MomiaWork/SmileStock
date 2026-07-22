@@ -56,6 +56,32 @@ export async function getPriceHistory(
   }));
 }
 
+export interface LatestPriceInfo {
+  date: string;
+  close: number;
+  previousClose: number | null;
+}
+
+/**
+ * 取得最新一筆收盤價，以及前一筆收盤價（用來算漲跌幅）。
+ * 只有一筆資料時 previousClose 為 null，畫面上該顯示「無漲跌幅資料」而非硬算出 0%。
+ */
+export async function getLatestPriceInfo(
+  db: SQLiteDatabase,
+  stockCode: string,
+): Promise<LatestPriceInfo | null> {
+  const rows = await db.getAllAsync<{ date: string; close: number }>(
+    `SELECT date, close FROM price_history WHERE stock_code = ? ORDER BY date DESC LIMIT 2`,
+    [stockCode],
+  );
+  if (rows.length === 0) return null;
+  return {
+    date: rows[0].date,
+    close: rows[0].close,
+    previousClose: rows.length > 1 ? rows[1].close : null,
+  };
+}
+
 export async function countPriceHistoryRows(
   db: SQLiteDatabase,
   stockCode: string,

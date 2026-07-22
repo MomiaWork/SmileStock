@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { getCurrentPrices, mergeLivePriceIntoHistory } from '../data-fetch/current-price';
 import { getPriceHistory } from '../db/price-history-repo';
 import { getEnabledStrategyConfigs, getWatchlist } from '../db/watchlist-repo';
 import { evaluateStrategy } from '../strategy-engine/engine';
@@ -31,22 +32,30 @@ function buildSignalKey(
 /**
  * 讀 watchlist -> 對每檔股票的每個啟用策略呼叫 engine.ts -> 有觸發就寫
  * notification_log 並發本機通知。Phase 4 的背景任務會重用這個函式。
+ *
+ * 策略判斷依 price_history 併入盤中最新報價後的結果，不能只看 price_history 最新一筆
+ * （可能是前一交易日，或今天背景同步還沒跑過），否則觸發通知會晚於價格實際到價的時間。
  */
 export async function checkWatchlistAndNotify(db: SQLiteDatabase): Promise<CheckResultItem[]> {
   const watchlist = await getWatchlist(db);
+  const currentPrices = await getCurrentPrices(
+    db,
+    watchlist.map((item) => item.stockCode),
+  );
   const results: CheckResultItem[] = [];
 
   for (const item of watchlist) {
     const configs = await getEnabledStrategyConfigs(db, item.id);
     const history = await getPriceHistory(db, item.stockCode);
+    const adviceHistory = mergeLivePriceIntoHistory(history, currentPrices[item.stockCode] ?? null);
 
     for (const config of configs) {
-      const signal = evaluateStrategy(history, { type: config.type, params: config.params });
+      const signal = evaluateStrategy(adviceHistory, { type: config.type, params: config.params });
 
       let notified = false;
       let notifyError: string | undefined;
       if (signal.triggered) {
-        const signalKey = buildSignalKey(config.type, signal, history);
+        const signalKey = buildSignalKey(config.type, signal, adviceHistory);
         try {
           notified = await notifyIfNew(db, {
             watchlistId: item.id,
