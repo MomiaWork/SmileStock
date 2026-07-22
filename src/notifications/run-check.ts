@@ -61,7 +61,9 @@ export async function checkWatchlistAndNotify(db: SQLiteDatabase): Promise<Check
     for (const config of configs) {
       const strategyConfig = { type: config.type, params: config.params };
       const signal = evaluateStrategy(adviceHistory, strategyConfig);
-      const advice = adviseEntry(adviceHistory, strategyConfig);
+      const advice = adviseEntry(adviceHistory, strategyConfig, {
+        momentumConfirmEnabled: item.entryConfirmEnabled,
+      });
 
       let notified = false;
       let notifyError: string | undefined;

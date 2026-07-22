@@ -116,6 +116,42 @@ test('策略觸發且趨勢已確認止穩反彈（enter）時推播文案不同
   );
 });
 
+test('watchlist 開啟進場確認濾網時，趨勢已確認但動能訊號不足會降級為 wait', async () => {
+  mockGetWatchlist.mockResolvedValue([
+    {
+      id: 1,
+      stockCode: 'TEST_GRID',
+      stockName: '測試',
+      budget: 10000,
+      priceCheckIntervalSec: null,
+      entryConfirmEnabled: true,
+    },
+  ]);
+  mockGetEnabledStrategyConfigs.mockResolvedValue([
+    {
+      id: 10,
+      watchlistId: 1,
+      type: 'grid',
+      params: { anchorPrice: 100, budget: 10000, spacingPercent: 5, tierCount: 5 },
+      enabled: true,
+    },
+  ]);
+  // 溫和下跌跌破第 1 檔（95），末端連續收高確認止穩，但 RSI/均線動能濾網（固定參數）不通過
+  mockGetPriceHistory.mockResolvedValue(
+    history([100, 100, 99, 100, 98, 99, 97, 98, 96, 97, 95, 96, 94, 95, 93, 94, 92, 91, 92, 93, 94]),
+  );
+
+  const results = await checkWatchlistAndNotify(fakeDb);
+
+  expect(results[0].signal.triggered).toBe(true);
+  expect(results[0].advice.action).toBe('wait');
+  expect(results[0].advice.reason).toContain('動能');
+  expect(mockNotifyIfNew).toHaveBeenCalledWith(
+    fakeDb,
+    expect.objectContaining({ signalKey: expect.stringContaining(':wait:') }),
+  );
+});
+
 test('未觸發的策略不會呼叫 notifyIfNew', async () => {
   mockGetWatchlist.mockResolvedValue([
     {

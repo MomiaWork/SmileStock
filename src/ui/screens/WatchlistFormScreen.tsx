@@ -12,8 +12,6 @@ import {
   updateWatchlistItem,
 } from '../../db/watchlist-repo';
 import type { GridStrategyConfig } from '../../strategy-engine/grid-strategy';
-import type { MaCrossStrategyConfig } from '../../strategy-engine/ma-cross-strategy';
-import type { RsiStrategyConfig } from '../../strategy-engine/rsi-strategy';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WatchlistForm'>;
@@ -41,13 +39,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
   const [gridSpacingPercent, setGridSpacingPercent] = useState('5');
   const [gridTierCount, setGridTierCount] = useState('5');
 
-  const [rsiEnabled, setRsiEnabled] = useState(false);
-  const [rsiPeriod, setRsiPeriod] = useState('14');
-  const [rsiThreshold, setRsiThreshold] = useState('30');
-
-  const [maEnabled, setMaEnabled] = useState(false);
-  const [maShortPeriod, setMaShortPeriod] = useState('5');
-  const [maLongPeriod, setMaLongPeriod] = useState('20');
+  const [entryConfirmEnabled, setEntryConfirmEnabled] = useState(false);
 
   const [loading, setLoading] = useState(isEditing);
 
@@ -72,6 +64,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       if (!item.priceCheckIntervalSec) setGridBudget(String(item.budget));
       if (item.takeProfitPercent !== null) setTakeProfitPercent(String(item.takeProfitPercent));
       if (item.stopLossPercent !== null) setStopLossPercent(String(item.stopLossPercent));
+      setEntryConfirmEnabled(item.entryConfirmEnabled);
 
       const configs = await getAllStrategyConfigs(db, watchlistId);
       for (const config of configs) {
@@ -82,16 +75,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
           setGridBudget(String(p.budget));
           setGridSpacingPercent(String(p.spacingPercent));
           setGridTierCount(String(p.tierCount));
-        } else if (config.type === 'rsi') {
-          const p = config.params as RsiStrategyConfig;
-          setRsiEnabled(config.enabled);
-          if (p.period !== undefined) setRsiPeriod(String(p.period));
-          if (p.threshold !== undefined) setRsiThreshold(String(p.threshold));
-        } else if (config.type === 'ma_cross') {
-          const p = config.params as MaCrossStrategyConfig;
-          setMaEnabled(config.enabled);
-          if (p.shortPeriod !== undefined) setMaShortPeriod(String(p.shortPeriod));
-          if (p.longPeriod !== undefined) setMaLongPeriod(String(p.longPeriod));
         }
       }
       setLoading(false);
@@ -118,6 +101,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       priceCheckIntervalSec: toNumberOrUndefined(intervalSec) ?? null,
       takeProfitPercent: toNumberOrUndefined(takeProfitPercent) ?? null,
       stopLossPercent: toNumberOrUndefined(stopLossPercent) ?? null,
+      entryConfirmEnabled,
     };
 
     try {
@@ -131,7 +115,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
           // 回補歷史資料失敗不擋新增股票，之後每日同步仍會逐筆累積
           Alert.alert(
             '歷史資料回補失敗',
-            `${err instanceof Error ? err.message : String(err)}\n\nRSI/均線策略要等資料累積足夠天數才會開始判斷，稍後可再手動同步。`,
+            `${err instanceof Error ? err.message : String(err)}\n\n進場確認濾網要等資料累積足夠天數才會開始判斷，稍後可再手動同步。`,
           );
         }
       }
@@ -148,26 +132,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
             spacingPercent: Number(gridSpacingPercent),
             tierCount: Number(gridTierCount),
           } satisfies GridStrategyConfig,
-        });
-      }
-      if (rsiEnabled) {
-        configs.push({
-          type: 'rsi',
-          enabled: true,
-          params: {
-            period: toNumberOrUndefined(rsiPeriod),
-            threshold: toNumberOrUndefined(rsiThreshold),
-          } satisfies RsiStrategyConfig,
-        });
-      }
-      if (maEnabled) {
-        configs.push({
-          type: 'ma_cross',
-          enabled: true,
-          params: {
-            shortPeriod: toNumberOrUndefined(maShortPeriod),
-            longPeriod: toNumberOrUndefined(maLongPeriod),
-          } satisfies MaCrossStrategyConfig,
         });
       }
 
@@ -274,50 +238,13 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       )}
 
       <View style={styles.switchRow}>
-        <Text style={styles.sectionTitle}>RSI</Text>
-        <Switch value={rsiEnabled} onValueChange={setRsiEnabled} />
+        <Text style={styles.sectionTitle}>進場確認濾網</Text>
+        <Switch value={entryConfirmEnabled} onValueChange={setEntryConfirmEnabled} />
       </View>
-      {rsiEnabled && (
-        <View>
-          <TextInput
-            style={styles.input}
-            placeholder="天數（預設 14）"
-            value={rsiPeriod}
-            onChangeText={setRsiPeriod}
-            keyboardType="numeric"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="門檻（預設 30）"
-            value={rsiThreshold}
-            onChangeText={setRsiThreshold}
-            keyboardType="numeric"
-          />
-        </View>
-      )}
-
-      <View style={styles.switchRow}>
-        <Text style={styles.sectionTitle}>均線交叉</Text>
-        <Switch value={maEnabled} onValueChange={setMaEnabled} />
-      </View>
-      {maEnabled && (
-        <View>
-          <TextInput
-            style={styles.input}
-            placeholder="短均線天數（預設 5）"
-            value={maShortPeriod}
-            onChangeText={setMaShortPeriod}
-            keyboardType="numeric"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="長均線天數（預設 20）"
-            value={maLongPeriod}
-            onChangeText={setMaLongPeriod}
-            keyboardType="numeric"
-          />
-        </View>
-      )}
+      <Text style={styles.helperText}>
+        開啟後，網格觸發時除了看趨勢是否止穩，還會多確認一次近期動能是否轉強，
+        兩項都通過才建議進場，未通過先建議觀望。
+      </Text>
 
       <View style={styles.saveButton}>
         <Button title="儲存" onPress={handleSave} />

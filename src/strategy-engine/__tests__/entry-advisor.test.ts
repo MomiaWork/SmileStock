@@ -31,7 +31,7 @@ describe('adviseEntry', () => {
     const advice = adviseEntry(
       closesToHistory([100, 100, 100, 100, 100, 100, 100]),
       { type: 'grid', params: gridConfig },
-      trendConfig,
+      { trendConfig },
     );
     expect(advice.action).toBe('no_signal');
     expect(advice.amount).toBeUndefined();
@@ -42,7 +42,7 @@ describe('adviseEntry', () => {
     const advice = adviseEntry(
       closesToHistory([120, 110, 105, 100, 96, 94]),
       { type: 'grid', params: gridConfig },
-      trendConfig,
+      { trendConfig },
     );
     expect(advice.action).toBe('wait');
     expect(advice.amount).toBeUndefined();
@@ -54,7 +54,7 @@ describe('adviseEntry', () => {
     const advice = adviseEntry(
       closesToHistory([120, 110, 100, 95, 90, 86, 87, 89]),
       { type: 'grid', params: gridConfig },
-      trendConfig,
+      { trendConfig },
     );
     expect(advice.action).toBe('enter');
     expect(advice.amount).toBeGreaterThan(0);
@@ -66,7 +66,7 @@ describe('adviseEntry', () => {
     const advice = adviseEntry(
       closesToHistory([120, 110, 100, 95, 90, 93, 92]),
       { type: 'grid', params: gridConfig },
-      trendConfig,
+      { trendConfig },
     );
     expect(advice.action).toBe('wait');
   });
@@ -75,7 +75,7 @@ describe('adviseEntry', () => {
     const advice = adviseEntry(
       closesToHistory([100, 101, 102, 103, 104]),
       { type: 'rsi', params: rsiConfig },
-      trendConfig,
+      { trendConfig },
     );
     expect(advice.action).toBe('no_signal');
   });
@@ -85,7 +85,7 @@ describe('adviseEntry', () => {
     const advice = adviseEntry(
       closesToHistory([120, 110, 105, 100, 96, 94]),
       { type: 'rsi', params: rsiConfig },
-      trendConfig,
+      { trendConfig },
     );
     expect(advice.action).toBe('wait');
     expect(advice.amount).toBeUndefined();
@@ -96,7 +96,7 @@ describe('adviseEntry', () => {
     const advice = adviseEntry(
       closesToHistory([120, 110, 100, 95, 90, 86, 87, 89]),
       { type: 'rsi', params: rsiConfig },
-      trendConfig,
+      { trendConfig },
     );
     expect(advice.action).toBe('enter');
     expect(advice.amount).toBeUndefined();
@@ -108,9 +108,52 @@ describe('adviseEntry', () => {
     const advice = adviseEntry(
       closesToHistory([100, 95, 88, 80, 78, 85, 100]),
       { type: 'ma_cross', params: maCrossConfig },
-      trendConfig,
+      { trendConfig },
     );
     expect(advice.action).toBe('enter');
     expect(advice.amount).toBeUndefined();
+  });
+
+  describe('momentumConfirmEnabled', () => {
+    // 21 天溫和下跌到跌破網格第 1 檔（95），最後 3 天連續收高確認止穩，
+    // 但 RSI(14) 約 40（未超賣）、均線也沒有黃金交叉 -> 動能確認濾網不通過
+    const noMomentumCloses = [
+      100, 100, 99, 100, 98, 99, 97, 98, 96, 97, 95, 96, 94, 95, 93, 94, 92, 91, 92, 93, 94,
+    ];
+    // 先深跌讓 RSI 探底，接一段走平讓長均線跟上，最後 2 天收高確認止穩 -> RSI 深度超賣，動能確認通過
+    const momentumConfirmedCloses = [
+      ...Array.from({ length: 15 }, (_, i) => 200 - i * 10),
+      ...Array.from({ length: 18 }, () => 60),
+      63,
+      66,
+    ];
+
+    test('關閉時（預設）即使動能訊號不足，行為跟現在一樣直接 enter', () => {
+      const advice = adviseEntry(
+        closesToHistory(noMomentumCloses),
+        { type: 'grid', params: gridConfig },
+        { trendConfig },
+      );
+      expect(advice.action).toBe('enter');
+    });
+
+    test('開啟後，趨勢已確認但動能訊號不足時，降級為 wait', () => {
+      const advice = adviseEntry(
+        closesToHistory(noMomentumCloses),
+        { type: 'grid', params: gridConfig },
+        { trendConfig, momentumConfirmEnabled: true },
+      );
+      expect(advice.action).toBe('wait');
+      expect(advice.reason).toContain('動能');
+    });
+
+    test('開啟後，趨勢與動能都確認時才 enter', () => {
+      const advice = adviseEntry(
+        closesToHistory(momentumConfirmedCloses),
+        { type: 'grid', params: gridConfig },
+        { trendConfig, momentumConfirmEnabled: true },
+      );
+      expect(advice.action).toBe('enter');
+    });
   });
 });

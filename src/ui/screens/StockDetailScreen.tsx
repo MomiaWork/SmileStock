@@ -99,7 +99,11 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
     setEntryAdvices(
       configs.map((config) => ({
         type: config.type,
-        advice: adviseEntry(adviceHistory, { type: config.type, params: config.params }),
+        advice: adviseEntry(
+          adviceHistory,
+          { type: config.type, params: config.params },
+          { momentumConfirmEnabled: watchlistItem.entryConfirmEnabled },
+        ),
       })),
     );
 

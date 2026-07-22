@@ -86,6 +86,12 @@ export async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
   // 已安裝過舊版 schema 的裝置要用 ALTER TABLE 補齊，先檢查欄位是否存在避免重複新增。
   await ensureColumn(db, 'watchlist', 'take_profit_percent', 'take_profit_percent REAL');
   await ensureColumn(db, 'watchlist', 'stop_loss_percent', 'stop_loss_percent REAL');
+  await ensureColumn(
+    db,
+    'watchlist',
+    'entry_confirm_enabled',
+    'entry_confirm_enabled INTEGER NOT NULL DEFAULT 0',
+  );
 }
 
 async function ensureColumn(
