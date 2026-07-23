@@ -10,11 +10,16 @@ import type { PricePoint } from './types';
  */
 
 export type MarketState =
-  | 'TRENDING_UP'
-  | 'TRENDING_DOWN'
-  | 'CONSOLIDATION'
-  | 'BREAKOUT_UP'
-  | 'BREAKOUT_DOWN';
+  'TRENDING_UP' | 'TRENDING_DOWN' | 'CONSOLIDATION' | 'BREAKOUT_UP' | 'BREAKOUT_DOWN';
+
+/** 市場狀態的中文說法，畫面與 reason 文字都用這份，不要直接把 enum 值塞進句子裡 */
+export const MARKET_STATE_LABEL: Record<MarketState, string> = {
+  TRENDING_UP: '上升趨勢',
+  TRENDING_DOWN: '下降趨勢',
+  CONSOLIDATION: '盤整',
+  BREAKOUT_UP: '向上突破',
+  BREAKOUT_DOWN: '向下突破',
+};
 
 export type PyramidAction = 'add' | 'exit' | 'freeze' | 'hold' | 'insufficient_data';
 
@@ -373,7 +378,11 @@ export function evaluatePyramid(
   }
 
   // 一般狀態切換：候選狀態需連續 stateConfirmDays 天一致才正式切換
-  if (!breakoutFiredThisBar && next.currentState !== 'BREAKOUT_UP' && next.currentState !== 'BREAKOUT_DOWN') {
+  if (
+    !breakoutFiredThisBar &&
+    next.currentState !== 'BREAKOUT_UP' &&
+    next.currentState !== 'BREAKOUT_DOWN'
+  ) {
     if (raw !== null && raw !== next.currentState) {
       if (next.candidateState === raw) {
         next.candidateDays += 1;
@@ -410,7 +419,7 @@ export function evaluatePyramid(
     next.stopPrice = Math.max(next.stopPrice, next.lastAddPrice * (1 - config.stopBufferPct / 100));
   }
 
-  const stateLabel = `狀態 ${next.currentState}`;
+  const stateLabel = MARKET_STATE_LABEL[next.currentState];
   const maxTier = config.weights.length - 1;
 
   // 硬停損：不論目前市場狀態（含 TRENDING_UP 途中），收盤跌破入門價固定水位就無條件出場。

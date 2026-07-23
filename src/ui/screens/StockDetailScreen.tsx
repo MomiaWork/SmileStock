@@ -19,7 +19,11 @@ import {
 } from '../../db/watchlist-repo';
 import { useI18n } from '../../i18n';
 import { adviseEntry, type EntryAdvice } from '../../strategy-engine/entry-advisor';
-import { evaluateStrategy } from '../../strategy-engine/engine';
+import {
+  evaluateStrategy,
+  routeRecommendation,
+  type RoutedRecommendation,
+} from '../../strategy-engine/engine';
 import { adviseExit, type ExitAdvice } from '../../strategy-engine/exit-advisor';
 import type { Position } from '../../strategy-engine/pnl';
 import {
@@ -59,6 +63,9 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   const [history, setHistory] = useState<PricePoint[]>([]);
   const [statuses, setStatuses] = useState<StrategyStatus[]>([]);
   const [pyramidStatuses, setPyramidStatuses] = useState<PyramidSignal[]>([]);
+  const [routedRecommendation, setRoutedRecommendation] = useState<RoutedRecommendation | null>(
+    null,
+  );
   const [notifications, setNotifications] = useState<NotificationHistoryEntry[]>([]);
   const [trend, setTrend] = useState<TrendClassification | null>(null);
   const [entryAdvices, setEntryAdvices] = useState<{ type: string; advice: EntryAdvice }[]>([]);
@@ -121,18 +128,36 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
 
     // 唯讀試算目前訊號給畫面顯示用，不在這裡改寫 pyramid_state——狀態的實際推進由
     // 「立即檢查」/背景任務（run-check.ts）負責，這裡只是讀最後一次存的狀態算出目前是什麼樣子
+    const pyramidPrevStates = await Promise.all(
+      pyramidConfigs.map((config) => getPyramidState(db, config.id)),
+    );
     setPyramidStatuses(
-      await Promise.all(
-        pyramidConfigs.map(async (config) => {
-          const prevState = await getPyramidState(db, config.id);
-          const { signal } = evaluatePyramid(
+      pyramidConfigs.map((config, i) => {
+        const { signal } = evaluatePyramid(
+          adviceHistory,
+          config.params as PyramidConfig,
+          pyramidPrevStates[i] ?? undefined,
+        );
+        return signal;
+      }),
+    );
+
+    // 網格（微笑曲線）與金字塔加碼同時啟用時，未來走勢究竟會是盤整、上升趨勢還是下降趨勢
+    // 事先無法確定，讓兩策略同時運作、依當天走勢由 routeRecommendation 判斷市場狀態，
+    // 只顯示單一明確的「今天該做的事」，避免兩策略同時給出矛盾建議或重複動用預算；
+    // 只開其中一個策略時維持原本各自獨立顯示，不套用路由
+    const gridConfigEntry = nonPyramidConfigs.find((config) => config.type === 'grid') ?? null;
+    const pyramidConfigEntry = pyramidConfigs[0] ?? null;
+    setRoutedRecommendation(
+      gridConfigEntry && pyramidConfigEntry
+        ? routeRecommendation(
             adviceHistory,
-            config.params as PyramidConfig,
-            prevState ?? undefined,
-          );
-          return signal;
-        }),
-      ),
+            { type: 'grid', params: gridConfigEntry.params },
+            pyramidConfigEntry.params as PyramidConfig,
+            pyramidPrevStates[0] ?? undefined,
+            { momentumConfirmEnabled: watchlistItem.entryConfirmEnabled },
+          )
+        : null,
     );
 
     const currentPosition = await getCurrentPosition(db, watchlistId);
@@ -223,36 +248,56 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
         </Section>
       )}
 
-      {entryAdvices.length > 0 && (
-        <Section title={strings.stockDetail.sectionEntryAdvice}>
-          {entryAdvices.map(({ type, advice }) => (
-            <StatusRow
-              key={type}
-              title={`[${type}] ${strings.stockDetail.entryAction[advice.action]}`}
-              subtitle={advice.reason}
-            />
-          ))}
+      {routedRecommendation && (
+        <Section title={strings.stockDetail.sectionTodayAction}>
+          <StatusRow
+            title={strings.stockDetail.todayActionTitle(
+              strings.stockDetail.todayActionLabel[routedRecommendation.action],
+              routedRecommendation.tierIndex,
+              routedRecommendation.amount,
+            )}
+            subtitle={routedRecommendation.reason}
+          />
         </Section>
       )}
 
-      <Section title={strings.stockDetail.sectionStrategyStatus}>
-        {statuses.length === 0 ? (
-          <StatusRow
-            title={strings.stockDetail.noStrategyTitle}
-            subtitle={strings.stockDetail.noStrategySubtitle}
-          />
-        ) : (
-          statuses.map((s, i) => (
-            <StatusRow
-              key={i}
-              title={`[${s.type}] ${s.signal.triggered ? strings.stockDetail.triggered : strings.stockDetail.notTriggered}`}
-              subtitle={s.signal.reason}
-            />
-          ))
-        )}
-      </Section>
+      {entryAdvices.filter(({ type }) => !routedRecommendation || type !== 'grid').length > 0 && (
+        <Section title={strings.stockDetail.sectionEntryAdvice}>
+          {entryAdvices
+            .filter(({ type }) => !routedRecommendation || type !== 'grid')
+            .map(({ type, advice }) => (
+              <StatusRow
+                key={type}
+                title={`[${type}] ${strings.stockDetail.entryAction[advice.action]}`}
+                subtitle={advice.reason}
+              />
+            ))}
+        </Section>
+      )}
 
-      {pyramidStatuses.length > 0 && (
+      {(statuses.filter((s) => !routedRecommendation || s.type !== 'grid').length > 0 ||
+        pyramidStatuses.length === 0) && (
+        <Section title={strings.stockDetail.sectionStrategyStatus}>
+          {statuses.filter((s) => !routedRecommendation || s.type !== 'grid').length === 0 ? (
+            <StatusRow
+              title={strings.stockDetail.noStrategyTitle}
+              subtitle={strings.stockDetail.noStrategySubtitle}
+            />
+          ) : (
+            statuses
+              .filter((s) => !routedRecommendation || s.type !== 'grid')
+              .map((s, i) => (
+                <StatusRow
+                  key={i}
+                  title={`[${s.type}] ${s.signal.triggered ? strings.stockDetail.triggered : strings.stockDetail.notTriggered}`}
+                  subtitle={s.signal.reason}
+                />
+              ))
+          )}
+        </Section>
+      )}
+
+      {!routedRecommendation && pyramidStatuses.length > 0 && (
         <Section title={strings.stockDetail.sectionPyramidStatus}>
           {pyramidStatuses.map((signal, i) => (
             <StatusRow

@@ -11,7 +11,11 @@ export type StrategyType = 'grid' | 'rsi' | 'ma_cross';
  * PyramidState 需由呼叫端持久化後在下一次評估時傳回。
  * 規格見 docs/pyramid-state-machine-spec.md。
  */
-export { evaluatePyramid, DEFAULT_PYRAMID_PARAMS } from './pyramid-state-machine';
+export {
+  evaluatePyramid,
+  DEFAULT_PYRAMID_PARAMS,
+  MARKET_STATE_LABEL,
+} from './pyramid-state-machine';
 export type {
   MarketState,
   PyramidAction,
@@ -20,6 +24,14 @@ export type {
   PyramidSignal,
   PyramidState,
 } from './pyramid-state-machine';
+
+/**
+ * 網格（微笑曲線）與金字塔加碼同時啟用時，用市場狀態路由到單一建議，
+ * 避免兩策略同一天給出矛盾指示、重複動用預算。規則與 reason 組成見
+ * recommendation-router.ts 內的說明。
+ */
+export { routeRecommendation } from './recommendation-router';
+export type { RecommendedAction, RoutedRecommendation } from './recommendation-router';
 
 export interface StrategyConfig {
   type: StrategyType;

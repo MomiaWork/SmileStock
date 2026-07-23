@@ -129,6 +129,22 @@ export interface Translations {
       BREAKOUT_UP: string;
       BREAKOUT_DOWN: string;
     };
+    sectionTodayAction: string;
+    todayActionLabel: {
+      enter: string;
+      add: string;
+      exit: string;
+      wait: string;
+      freeze: string;
+      hold: string;
+      no_signal: string;
+      insufficient_data: string;
+    };
+    todayActionTitle: (
+      label: string,
+      tierIndex: number | undefined,
+      amount: number | undefined,
+    ) => string;
   };
   settings: {
     sectionGlobalDefaults: string;
@@ -345,6 +361,19 @@ export const zh: Translations = {
       BREAKOUT_UP: '🚀 向上突破',
       BREAKOUT_DOWN: '⚠️ 向下突破',
     },
+    sectionTodayAction: '今天該做的事',
+    todayActionLabel: {
+      enter: '🟢 建議進場',
+      add: '🟢 建議加碼',
+      exit: '🔴 建議出場',
+      wait: '🟡 建議觀望',
+      freeze: '🟡 凍結加碼，續抱',
+      hold: '🟡 建議續抱',
+      no_signal: '⚪️ 尚未觸發訊號',
+      insufficient_data: '⚪️ 資料不足',
+    },
+    todayActionTitle: (label, tierIndex, amount) =>
+      `${label}${tierIndex !== undefined ? `／第 ${tierIndex} 級` : ''}${amount !== undefined ? `，約 ${amount.toFixed(0)} 元` : ''}`,
   },
   settings: {
     sectionGlobalDefaults: '全域預設',
@@ -571,6 +600,19 @@ export const en: Translations = {
       BREAKOUT_UP: '🚀 Breakout Up',
       BREAKOUT_DOWN: '⚠️ Breakout Down',
     },
+    sectionTodayAction: "Today's Action",
+    todayActionLabel: {
+      enter: '🟢 Enter suggested',
+      add: '🟢 Add-on suggested',
+      exit: '🔴 Exit suggested',
+      wait: '🟡 Wait suggested',
+      freeze: '🟡 Add-on frozen, hold',
+      hold: '🟡 Hold suggested',
+      no_signal: '⚪️ No signal yet',
+      insufficient_data: '⚪️ Insufficient data',
+    },
+    todayActionTitle: (label, tierIndex, amount) =>
+      `${label}${tierIndex !== undefined ? ` ／ Tier ${tierIndex}` : ''}${amount !== undefined ? `, about ${amount.toFixed(0)}` : ''}`,
   },
   settings: {
     sectionGlobalDefaults: 'Global Defaults',
