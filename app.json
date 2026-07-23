@@ -29,7 +29,8 @@
       "expo-sqlite",
       "expo-sharing",
       "expo-background-task",
-      "./plugins/withoutPushEntitlement"
+      "./plugins/withoutPushEntitlement",
+      "expo-localization"
     ]
   }
 }

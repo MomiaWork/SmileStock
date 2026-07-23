@@ -5,6 +5,7 @@ import { registerBackgroundTaskAsync } from './src/background/background-fetch-t
 import { startForegroundPoll } from './src/background/foreground-poll';
 import { getDb } from './src/db/schema';
 import { getGlobalDefaultIntervalSec } from './src/db/settings-repo';
+import I18nProvider from './src/i18n/I18nProvider';
 import RootNavigator from './src/ui/navigation/RootNavigator';
 
 export default function App() {
@@ -22,9 +23,9 @@ export default function App() {
   }, []);
 
   return (
-    <>
+    <I18nProvider>
       <RootNavigator />
       <StatusBar style="auto" />
-    </>
+    </I18nProvider>
   );
 }

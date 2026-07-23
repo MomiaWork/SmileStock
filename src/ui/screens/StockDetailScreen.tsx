@@ -16,6 +16,7 @@ import {
   getWatchlistItem,
   type WatchlistItem,
 } from '../../db/watchlist-repo';
+import { useI18n } from '../../i18n';
 import { adviseEntry, type EntryAdvice } from '../../strategy-engine/entry-advisor';
 import { evaluateStrategy } from '../../strategy-engine/engine';
 import { adviseExit, type ExitAdvice } from '../../strategy-engine/exit-advisor';
@@ -36,24 +37,6 @@ interface StrategyStatus {
   signal: StrategySignal;
 }
 
-const TREND_LABEL: Record<TrendClassification['face'], string> = {
-  smile: '😊 笑臉（止穩反彈）',
-  cry: '😢 哭臉（持續破底）',
-  neutral: '😐 中性（趨勢不明）',
-};
-
-const ENTRY_ACTION_LABEL: Record<EntryAdvice['action'], string> = {
-  enter: '🟢 建議進場',
-  wait: '🟡 建議觀望',
-  no_signal: '⚪️ 尚未觸發網格',
-};
-
-const EXIT_ACTION_LABEL: Record<ExitAdvice['action'], string> = {
-  exit_take_profit: '🟢 建議停利出場',
-  exit_stop_loss: '🔴 建議停損出場',
-  hold: '🟡 建議續抱',
-};
-
 function StatusRow({ title, subtitle }: { title: string; subtitle: string }): React.JSX.Element {
   return (
     <View style={styles.statusRow}>
@@ -64,6 +47,7 @@ function StatusRow({ title, subtitle }: { title: string; subtitle: string }): Re
 }
 
 export default function StockDetailScreen({ route, navigation }: Props): React.JSX.Element {
+  const { strings } = useI18n();
   const { watchlistId } = route.params;
   const [item, setItem] = useState<WatchlistItem | null>(null);
   const [history, setHistory] = useState<PricePoint[]>([]);
@@ -141,9 +125,9 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   useFocusEffect(
     useCallback(() => {
       reload().catch((err) => {
-        Alert.alert('讀取股票資料失敗', err instanceof Error ? err.message : String(err));
+        Alert.alert(strings.stockDetail.loadFailedTitle, err instanceof Error ? err.message : String(err));
       });
-    }, [reload]),
+    }, [reload, strings]),
   );
 
   const handleAddTrade = async (): Promise<void> => {
@@ -155,7 +139,7 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
       !Number.isFinite(quantityNum) ||
       quantityNum <= 0
     ) {
-      Alert.alert('請確認成交價與股數都已正確填寫');
+      Alert.alert(strings.stockDetail.tradeValidation);
       return;
     }
 
@@ -174,7 +158,7 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
       setTradeNote('');
       await reload();
     } catch (err) {
-      Alert.alert('記錄交易失敗', err instanceof Error ? err.message : String(err));
+      Alert.alert(strings.stockDetail.tradeFailedTitle, err instanceof Error ? err.message : String(err));
     } finally {
       setSavingTrade(false);
     }
@@ -183,56 +167,62 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   if (!item) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={typography.body}>載入中...</Text>
+        <Text style={typography.body}>{strings.common.loading}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Section title="價格走勢">
+      <Section title={strings.stockDetail.sectionChart}>
         <View style={styles.chartCard}>
           <PriceLineChart history={history} />
         </View>
       </Section>
 
       {trend && (
-        <Section title="目前趨勢">
-          <StatusRow title={TREND_LABEL[trend.face]} subtitle={trend.reason} />
+        <Section title={strings.stockDetail.sectionTrend}>
+          <StatusRow title={strings.stockDetail.trend[trend.face]} subtitle={trend.reason} />
         </Section>
       )}
 
       {entryAdvices.length > 0 && (
-        <Section title="進場建議">
+        <Section title={strings.stockDetail.sectionEntryAdvice}>
           {entryAdvices.map(({ type, advice }) => (
             <StatusRow
               key={type}
-              title={`[${type}] ${ENTRY_ACTION_LABEL[advice.action]}`}
+              title={`[${type}] ${strings.stockDetail.entryAction[advice.action]}`}
               subtitle={advice.reason}
             />
           ))}
         </Section>
       )}
 
-      <Section title="目前策略狀態">
+      <Section title={strings.stockDetail.sectionStrategyStatus}>
         {statuses.length === 0 ? (
-          <StatusRow title="沒有啟用任何策略" subtitle="到編輯股票頁面開啟策略後會顯示在這裡" />
+          <StatusRow
+            title={strings.stockDetail.noStrategyTitle}
+            subtitle={strings.stockDetail.noStrategySubtitle}
+          />
         ) : (
           statuses.map((s, i) => (
             <StatusRow
               key={i}
-              title={`[${s.type}] ${s.signal.triggered ? '🔴 已觸發' : '⚪️ 未觸發'}`}
+              title={`[${s.type}] ${s.signal.triggered ? strings.stockDetail.triggered : strings.stockDetail.notTriggered}`}
               subtitle={s.signal.reason}
             />
           ))
         )}
       </Section>
 
-      <Section title="持倉與損益">
+      <Section title={strings.stockDetail.sectionPosition}>
         {position ? (
           <View style={styles.pnlCard}>
             <Text style={styles.statusSubtitle}>
-              持有 {position.quantity} 股，平均成本 {position.avgCost.toFixed(2)}
+              {strings.stockDetail.positionSummary(
+                position.quantity,
+                position.avgCost.toFixed(2),
+              )}
             </Text>
             {exitAdvice && (
               <>
@@ -242,23 +232,28 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
                     exitAdvice.pnl.pnl >= 0 ? styles.pnlPositive : styles.pnlNegative,
                   ]}
                 >
-                  目前市值 {exitAdvice.pnl.marketValue.toFixed(0)}，損益{' '}
-                  {exitAdvice.pnl.pnl >= 0 ? '+' : ''}
-                  {exitAdvice.pnl.pnl.toFixed(0)}（報酬率{' '}
-                  {exitAdvice.pnl.returnRatePercent >= 0 ? '+' : ''}
-                  {exitAdvice.pnl.returnRatePercent.toFixed(2)}%）
+                  {strings.stockDetail.pnlSummary(
+                    exitAdvice.pnl.marketValue.toFixed(0),
+                    `${exitAdvice.pnl.pnl >= 0 ? '+' : ''}${exitAdvice.pnl.pnl.toFixed(0)}`,
+                    `${exitAdvice.pnl.returnRatePercent >= 0 ? '+' : ''}${exitAdvice.pnl.returnRatePercent.toFixed(2)}`,
+                  )}
                 </Text>
-                <Text style={styles.statusTitle}>{EXIT_ACTION_LABEL[exitAdvice.action]}</Text>
+                <Text style={styles.statusTitle}>
+                  {strings.stockDetail.exitAction[exitAdvice.action]}
+                </Text>
                 <Text style={styles.statusSubtitle}>{exitAdvice.reason}</Text>
               </>
             )}
           </View>
         ) : (
-          <StatusRow title="目前沒有持倉" subtitle="記錄一筆買入交易後會顯示持倉與損益" />
+          <StatusRow
+            title={strings.stockDetail.noPositionTitle}
+            subtitle={strings.stockDetail.noPositionSubtitle}
+          />
         )}
       </Section>
 
-      <Section title="記錄交易">
+      <Section title={strings.stockDetail.sectionRecordTrade}>
         <View style={styles.segmentRow}>
           {(['buy', 'sell'] as const).map((side) => (
             <Pressable
@@ -267,57 +262,67 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
               style={[styles.segment, tradeSide === side && styles.segmentActive]}
             >
               <Text style={[styles.segmentText, tradeSide === side && styles.segmentTextActive]}>
-                {side === 'buy' ? '買入' : '賣出'}
+                {side === 'buy' ? strings.stockDetail.buy : strings.stockDetail.sell}
               </Text>
             </Pressable>
           ))}
         </View>
         <InputRow
-          label="成交價"
+          label={strings.stockDetail.fieldTradePrice}
           value={tradePrice}
           onChangeText={setTradePrice}
           keyboardType="numeric"
         />
         <InputRow
-          label="股數"
+          label={strings.stockDetail.fieldQuantity}
           value={tradeQuantity}
           onChangeText={setTradeQuantity}
           keyboardType="numeric"
         />
         <InputRow
-          label="備註"
-          placeholder="選填"
+          label={strings.stockDetail.fieldNote}
+          placeholder={strings.stockDetail.placeholderOptional}
           value={tradeNote}
           onChangeText={setTradeNote}
         />
       </Section>
       <View style={styles.primaryButtonWrap}>
         <PrimaryButton
-          title={`新增${tradeSide === 'buy' ? '買入' : '賣出'}記錄`}
+          title={tradeSide === 'buy' ? strings.stockDetail.addBuyRecord : strings.stockDetail.addSellRecord}
           onPress={() => void handleAddTrade()}
           loading={savingTrade}
         />
       </View>
 
-      <Section title="交易紀錄">
+      <Section title={strings.stockDetail.sectionTrades}>
         {trades.length === 0 ? (
-          <StatusRow title="還沒有任何交易記錄" subtitle="記錄買賣後會顯示在這裡" />
+          <StatusRow
+            title={strings.stockDetail.noTradesTitle}
+            subtitle={strings.stockDetail.noTradesSubtitle}
+          />
         ) : (
           [...trades]
             .reverse()
             .map((t) => (
               <StatusRow
                 key={t.id}
-                title={`${t.side === 'buy' ? '買入' : '賣出'} ${t.quantity} 股 @ ${t.price}`}
+                title={strings.stockDetail.tradeSummary(
+                  t.side === 'buy' ? strings.stockDetail.buy : strings.stockDetail.sell,
+                  t.quantity,
+                  t.price,
+                )}
                 subtitle={`${t.tradedAt}${t.note ? `　${t.note}` : ''}`}
               />
             ))
         )}
       </Section>
 
-      <Section title="歷史觸發記錄">
+      <Section title={strings.stockDetail.sectionNotifications}>
         {notifications.length === 0 ? (
-          <StatusRow title="還沒有發送過通知" subtitle="策略觸發時會記錄在這裡" />
+          <StatusRow
+            title={strings.stockDetail.noNotificationsTitle}
+            subtitle={strings.stockDetail.noNotificationsSubtitle}
+          />
         ) : (
           notifications.map((n) => (
             <StatusRow key={n.id} title={`[${n.strategyType}] ${n.signalKey}`} subtitle={n.sentAt} />

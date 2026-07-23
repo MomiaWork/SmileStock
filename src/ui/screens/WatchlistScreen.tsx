@@ -23,6 +23,7 @@ import {
   type WatchlistItem,
 } from '../../db/watchlist-repo';
 import { runClaudeShortcut, shareStrategyExport } from '../../export/shortcuts-export';
+import { useI18n } from '../../i18n';
 import { requestNotificationPermission } from '../../notifications/local-notification';
 import { checkWatchlistAndNotify } from '../../notifications/run-check';
 import IconButton from '../components/IconButton';
@@ -39,6 +40,7 @@ const buildNumber =
     : String(Constants.expoConfig?.android?.versionCode ?? '');
 
 export default function WatchlistScreen({ navigation }: Props): React.JSX.Element {
+  const { strings } = useI18n();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [priceInfoByCode, setPriceInfoByCode] = useState<Record<string, CurrentPriceInfo | null>>(
     {},
@@ -100,18 +102,22 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   };
 
   const handleDelete = (item: WatchlistItem): void => {
-    Alert.alert('刪除股票', `確定要刪除 ${item.stockCode} ${item.stockName} 嗎？`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '刪除',
-        style: 'destructive',
-        onPress: async () => {
-          const db = await getDb();
-          await deleteWatchlistItem(db, item.id);
-          await reload();
+    Alert.alert(
+      strings.watchlist.deleteTitle,
+      strings.watchlist.deleteMessage(item.stockCode, item.stockName),
+      [
+        { text: strings.watchlist.cancel, style: 'cancel' },
+        {
+          text: strings.watchlist.delete,
+          style: 'destructive',
+          onPress: async () => {
+            const db = await getDb();
+            await deleteWatchlistItem(db, item.id);
+            await reload();
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const handleImmediateCheck = async (): Promise<void> => {
@@ -126,14 +132,15 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
 
       const notifiedCount = results.filter((r) => r.notified).length;
       const failedCount = results.filter((r) => r.notifyError !== undefined).length;
-      const failedNote = failedCount > 0 ? `，${failedCount} 個通知發送失敗` : '';
-      const syncNote = syncError ? `\n\n更新最新成交價失敗，改用既有歷史資料：${syncError}` : '';
+      const failedNote =
+        failedCount > 0 ? strings.watchlist.notifiedFailedNote(failedCount) : '';
+      const syncNote = syncError ? strings.watchlist.syncFailedNote(syncError) : '';
       Alert.alert(
-        '立即檢查完成',
-        `檢查了 ${results.length} 個策略設定，其中 ${notifiedCount} 個發出新通知${failedNote}${syncNote}`,
+        strings.watchlist.checkCompleteTitle,
+        strings.watchlist.checkCompleteMessage(results.length, notifiedCount, failedNote + syncNote),
       );
     } catch (err) {
-      Alert.alert('立即檢查失敗', err instanceof Error ? err.message : String(err));
+      Alert.alert(strings.watchlist.checkFailedTitle, err instanceof Error ? err.message : String(err));
     } finally {
       setChecking(false);
     }
@@ -145,7 +152,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
       const db = await getDb();
       await shareStrategyExport(db);
     } catch (err) {
-      Alert.alert('分享失敗', err instanceof Error ? err.message : String(err));
+      Alert.alert(strings.watchlist.shareFailedTitle, err instanceof Error ? err.message : String(err));
     } finally {
       setSharing(false);
     }
@@ -157,7 +164,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
       const db = await getDb();
       await runClaudeShortcut(db);
     } catch (err) {
-      Alert.alert('執行捷徑失敗', err instanceof Error ? err.message : String(err));
+      Alert.alert(strings.watchlist.claudeFailedTitle, err instanceof Error ? err.message : String(err));
     } finally {
       setAnalyzing(false);
     }
@@ -167,7 +174,10 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
 
   const handleAddPress = (): void => {
     if (!canAddMore) {
-      Alert.alert('已達上限', `最多只能追蹤 ${MAX_WATCHLIST_SIZE} 檔股票，請先刪除一筆再新增`);
+      Alert.alert(
+        strings.watchlist.limitReachedTitle,
+        strings.watchlist.limitReachedMessage(MAX_WATCHLIST_SIZE),
+      );
       return;
     }
     navigation.navigate('WatchlistForm', {});
@@ -185,24 +195,24 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
     <View style={styles.container}>
       <View style={styles.toolbar}>
         <PillButton
-          label="策略建議"
+          label={strings.watchlist.strategyRecommendation}
           icon="bulb-outline"
           onPress={() => navigation.navigate('StrategyRecommendation')}
         />
         <PillButton
-          label={checking ? '檢查中...' : '立即檢查'}
+          label={checking ? strings.watchlist.checking : strings.watchlist.immediateCheck}
           icon="refresh-outline"
           onPress={handleImmediateCheck}
           disabled={checking}
         />
         <PillButton
-          label={sharing ? '分享中...' : '分享'}
+          label={sharing ? strings.watchlist.sharing : strings.watchlist.share}
           icon="share-outline"
           onPress={handleShare}
           disabled={sharing || items.length === 0}
         />
         <PillButton
-          label={analyzing ? '啟動中...' : 'Claude 分析'}
+          label={analyzing ? strings.watchlist.claudeAnalyzing : strings.watchlist.claudeAnalyze}
           icon="sparkles-outline"
           onPress={handleClaudeAnalyze}
           disabled={analyzing || items.length === 0}
@@ -215,8 +225,8 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>還沒有任何股票</Text>
-            <Text style={styles.emptySubtext}>按右上角「＋」新增第一檔追蹤股票</Text>
+            <Text style={styles.emptyText}>{strings.watchlist.emptyTitle}</Text>
+            <Text style={styles.emptySubtext}>{strings.watchlist.emptySubtitle}</Text>
           </View>
         }
         renderItem={({ item }) => {
@@ -246,7 +256,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
                 </View>
                 <View style={styles.priceBlock}>
                   <Text style={[styles.priceText, changeStyle]}>
-                    {priceInfo ? priceInfo.price.toFixed(2) : '尚無資料'}
+                    {priceInfo ? priceInfo.price.toFixed(2) : strings.watchlist.noData}
                   </Text>
                   {changeAmount !== null && changePercent !== null && (
                     <Text style={[styles.changeText, changeStyle]}>
@@ -257,14 +267,18 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
                   )}
                   {priceInfo && (
                     <Text style={styles.asOfText}>
-                      {priceInfo.isRealtime ? priceInfo.asOf : `${priceInfo.asOf} 收盤`}
+                      {priceInfo.isRealtime
+                        ? priceInfo.asOf
+                        : `${priceInfo.asOf} ${strings.watchlist.closingSuffix}`}
                     </Text>
                   )}
                 </View>
               </View>
 
               <View style={styles.cardFooter}>
-                <Text style={styles.budget}>預算 {item.budget.toLocaleString()}</Text>
+                <Text style={styles.budget}>
+                  {strings.watchlist.budgetLabel(item.budget.toLocaleString())}
+                </Text>
                 <View style={styles.cardActions}>
                   <IconButton
                     icon="pencil-outline"

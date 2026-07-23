@@ -31,3 +31,22 @@ export async function getClaudeShortcutName(db: SQLiteDatabase): Promise<string>
 export async function setClaudeShortcutName(db: SQLiteDatabase, name: string): Promise<void> {
   await setMeta(db, CLAUDE_SHORTCUT_NAME_KEY, name.trim());
 }
+
+const LANGUAGE_PREFERENCE_KEY = 'language_preference';
+const VALID_LANGUAGE_PREFERENCES = ['system', 'zh', 'en'] as const;
+export type LanguagePreferenceValue = (typeof VALID_LANGUAGE_PREFERENCES)[number];
+export const DEFAULT_LANGUAGE_PREFERENCE: LanguagePreferenceValue = 'system';
+
+export async function getLanguagePreference(db: SQLiteDatabase): Promise<LanguagePreferenceValue> {
+  const value = await getMeta(db, LANGUAGE_PREFERENCE_KEY);
+  return (VALID_LANGUAGE_PREFERENCES as readonly string[]).includes(value ?? '')
+    ? (value as LanguagePreferenceValue)
+    : DEFAULT_LANGUAGE_PREFERENCE;
+}
+
+export async function setLanguagePreference(
+  db: SQLiteDatabase,
+  preference: LanguagePreferenceValue,
+): Promise<void> {
+  await setMeta(db, LANGUAGE_PREFERENCE_KEY, preference);
+}

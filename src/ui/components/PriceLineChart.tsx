@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Polyline } from 'react-native-svg';
 
+import { useI18n } from '../../i18n';
 import type { PricePoint } from '../../strategy-engine/types';
 
 export interface PriceLineChartProps {
@@ -18,10 +19,12 @@ export default function PriceLineChart({
   width = 320,
   height = 160,
 }: PriceLineChartProps): React.JSX.Element {
+  const { strings } = useI18n();
+
   if (history.length < 2) {
     return (
       <View style={[styles.emptyBox, { width, height }]}>
-        <Text style={styles.emptyText}>歷史資料不足，無法繪製走勢圖</Text>
+        <Text style={styles.emptyText}>{strings.priceChart.insufficientData}</Text>
       </View>
     );
   }
@@ -62,9 +65,7 @@ export default function PriceLineChart({
         <Text style={styles.legendText}>
           {history[0].date} ~ {history[history.length - 1].date}
         </Text>
-        <Text style={styles.legendText}>
-          低 {minClose} / 高 {maxClose}
-        </Text>
+        <Text style={styles.legendText}>{strings.priceChart.lowHigh(minClose, maxClose)}</Text>
       </View>
     </View>
   );

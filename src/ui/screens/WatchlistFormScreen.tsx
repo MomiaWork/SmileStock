@@ -13,6 +13,7 @@ import {
   replaceStrategyConfigs,
   updateWatchlistItem,
 } from '../../db/watchlist-repo';
+import { useI18n } from '../../i18n';
 import type { GridStrategyConfig } from '../../strategy-engine/grid-strategy';
 import { InputRow, Row } from '../components/Row';
 import Section from '../components/Section';
@@ -28,6 +29,7 @@ function toNumberOrUndefined(text: string): number | undefined {
 }
 
 export default function WatchlistFormScreen({ route, navigation }: Props): React.JSX.Element {
+  const { strings } = useI18n();
   const watchlistId = route.params?.watchlistId;
   const isEditing = watchlistId !== undefined;
   // 從「策略建議」畫面帶參數過來時預填——只在新增（非編輯）情境套用，
@@ -61,8 +63,10 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
   const [fetchingCurrentPrice, setFetchingCurrentPrice] = useState(false);
 
   useEffect(() => {
-    navigation.setOptions({ title: isEditing ? '編輯股票' : '新增股票' });
-  }, [navigation, isEditing]);
+    navigation.setOptions({
+      title: isEditing ? strings.watchlistForm.titleEdit : strings.watchlistForm.titleAdd,
+    });
+  }, [navigation, isEditing, strings]);
 
   // 新增股票時查價間隔直接帶入目前的全域預設值，不留空——使用者若沒特別調整過
   // 全域預設，state 初始值（DEFAULT_GLOBAL_INTERVAL_SEC）已經是對的，這裡只在
@@ -81,7 +85,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       const db = await getDb();
       const item = await getWatchlistItem(db, watchlistId);
       if (!item) {
-        Alert.alert('找不到這筆股票');
+        Alert.alert(strings.watchlistForm.notFound);
         navigation.goBack();
         return;
       }
@@ -109,7 +113,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       }
       setLoading(false);
     })();
-  }, [isEditing, watchlistId, navigation]);
+  }, [isEditing, watchlistId, navigation, strings]);
 
   // 網格策略的錨定價通常就是「現在」進場的價格，開啟網格策略時直接用即時報價帶入，
   // 省得使用者自己再查一次目前價格——查不到才需要手動輸入，且只在欄位還空著時自動帶入，
@@ -120,14 +124,17 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       const [quote] = await fetchRealtimeQuotes([code]);
       const price = quote?.lastPrice ?? quote?.previousClose;
       if (price === undefined || price === null) {
-        Alert.alert('查不到目前價格', `${code} 目前查不到報價，請手動輸入錨定價`);
+        Alert.alert(
+          strings.watchlistForm.anchorNotFoundTitle,
+          strings.watchlistForm.anchorNotFoundMessage(code),
+        );
         return;
       }
       setGridAnchorPrice(String(price));
     } catch (err) {
       Alert.alert(
-        '查詢目前價格失敗',
-        `${err instanceof Error ? err.message : String(err)}\n\n請手動輸入錨定價`,
+        strings.watchlistForm.anchorFetchFailedTitle,
+        `${err instanceof Error ? err.message : String(err)}${strings.watchlistForm.anchorFetchFailedSuffix}`,
       );
     } finally {
       setFetchingCurrentPrice(false);
@@ -164,7 +171,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       !Number.isFinite(budgetNum) ||
       budgetNum <= 0
     ) {
-      Alert.alert('請確認股票代號、名稱、預算都已正確填寫');
+      Alert.alert(strings.watchlistForm.validationBasic);
       return;
     }
 
@@ -180,7 +187,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
         !Number.isFinite(gridTierCountNum) ||
         gridTierCountNum <= 0)
     ) {
-      Alert.alert('請確認網格策略的錨定價、間距 %、檔位數都已正確填寫（需大於 0）');
+      Alert.alert(strings.watchlistForm.validationGrid);
       return;
     }
 
@@ -205,8 +212,8 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
         } catch (err) {
           // 回補歷史資料失敗不擋新增股票，之後每日同步仍會逐筆累積
           Alert.alert(
-            '歷史資料回補失敗',
-            `${err instanceof Error ? err.message : String(err)}\n\n進場確認濾網要等資料累積足夠天數才會開始判斷，稍後可再手動同步。`,
+            strings.watchlistForm.backfillFailedTitle,
+            `${err instanceof Error ? err.message : String(err)}${strings.watchlistForm.backfillFailedSuffix}`,
           );
         }
       }
@@ -235,7 +242,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
         navigation.goBack();
       }
     } catch (err) {
-      Alert.alert('儲存失敗', err instanceof Error ? err.message : String(err));
+      Alert.alert(strings.watchlistForm.saveFailedTitle, err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -249,73 +256,82 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       headerRight: () =>
         loading ? null : (
           <Pressable hitSlop={8} onPress={() => void handleSaveRef.current()}>
-            <Text style={styles.headerSaveText}>儲存</Text>
+            <Text style={styles.headerSaveText}>{strings.common.save}</Text>
           </Pressable>
         ),
     });
-  }, [navigation, loading]);
+  }, [navigation, loading, strings]);
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={typography.body}>載入中...</Text>
+        <Text style={typography.body}>{strings.common.loading}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Section title="基本資料">
+      <Section title={strings.watchlistForm.sectionBasic}>
         <InputRow
-          label="股票代碼"
-          placeholder="例如 2330"
+          label={strings.watchlistForm.fieldStockCode}
+          placeholder={strings.watchlistForm.placeholderStockCode}
           value={stockCode}
           onChangeText={setStockCode}
           autoCapitalize="characters"
         />
         <InputRow
-          label="股票名稱"
-          placeholder="例如 台積電"
+          label={strings.watchlistForm.fieldStockName}
+          placeholder={strings.watchlistForm.placeholderStockName}
           value={stockName}
           onChangeText={setStockName}
         />
-        <InputRow label="預算" value={budget} onChangeText={setBudget} keyboardType="numeric" />
         <InputRow
-          label="查價間隔（秒）"
+          label={strings.watchlistForm.fieldBudget}
+          value={budget}
+          onChangeText={setBudget}
+          keyboardType="numeric"
+        />
+        <InputRow
+          label={strings.watchlistForm.fieldIntervalSec}
           value={intervalSec}
           onChangeText={setIntervalSec}
           keyboardType="numeric"
         />
       </Section>
 
-      <Section title="出場設定" footer="持有部位時用來判斷是否建議出場，留空使用預設值（停利 10%／停損 8%）">
+      <Section title={strings.watchlistForm.sectionExit} footer={strings.watchlistForm.sectionExitFooter}>
         <InputRow
-          label="停利 %"
-          placeholder="留空預設 10"
+          label={strings.watchlistForm.fieldTakeProfit}
+          placeholder={strings.watchlistForm.placeholderTakeProfit}
           value={takeProfitPercent}
           onChangeText={setTakeProfitPercent}
           keyboardType="numeric"
         />
         <InputRow
-          label="停損 %"
-          placeholder="留空預設 8"
+          label={strings.watchlistForm.fieldStopLoss}
+          placeholder={strings.watchlistForm.placeholderStopLoss}
           value={stopLossPercent}
           onChangeText={setStopLossPercent}
           keyboardType="numeric"
         />
       </Section>
 
-      <Section title="微笑曲線網格">
+      <Section title={strings.watchlistForm.sectionGrid}>
         {[
-          <Row key="switch" label="啟用網格策略">
+          <Row key="switch" label={strings.watchlistForm.fieldGridEnabled}>
             <Switch value={gridEnabled} onValueChange={handleGridEnabledChange} />
           </Row>,
           ...(gridEnabled
             ? [
                 <InputRow
                   key="anchor"
-                  label="錨定價"
-                  placeholder={fetchingCurrentPrice ? '查詢中...' : '例如 580'}
+                  label={strings.watchlistForm.fieldAnchorPrice}
+                  placeholder={
+                    fetchingCurrentPrice
+                      ? strings.watchlistForm.placeholderAnchorFetching
+                      : strings.watchlistForm.placeholderAnchorExample
+                  }
                   value={gridAnchorPrice}
                   onChangeText={setGridAnchorPrice}
                   keyboardType="numeric"
@@ -323,14 +339,14 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
                 />,
                 <InputRow
                   key="spacing"
-                  label="間距 %"
+                  label={strings.watchlistForm.fieldSpacingPercent}
                   value={gridSpacingPercent}
                   onChangeText={setGridSpacingPercent}
                   keyboardType="numeric"
                 />,
                 <InputRow
                   key="tier"
-                  label="檔位數"
+                  label={strings.watchlistForm.fieldTierCount}
                   value={gridTierCount}
                   onChangeText={setGridTierCount}
                   keyboardType="numeric"
@@ -341,10 +357,10 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       </Section>
 
       <Section
-        title="進場確認濾網"
-        footer="開啟後，網格觸發時除了看趨勢是否止穩，還會多確認一次近期動能是否轉強，兩項都通過才建議進場，未通過先建議觀望。"
+        title={strings.watchlistForm.sectionEntryConfirm}
+        footer={strings.watchlistForm.sectionEntryConfirmFooter}
       >
-        <Row label="啟用進場確認濾網">
+        <Row label={strings.watchlistForm.fieldEntryConfirmEnabled}>
           <Switch value={entryConfirmEnabled} onValueChange={setEntryConfirmEnabled} />
         </Row>
       </Section>
