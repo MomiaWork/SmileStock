@@ -106,6 +106,15 @@ export interface Translations {
     trend: { smile: string; cry: string; neutral: string };
     entryAction: { enter: string; wait: string; no_signal: string };
     exitAction: { exit_take_profit: string; exit_stop_loss: string; hold: string };
+    sectionPyramidStatus: string;
+    pyramidStateLabel: (stateLabel: string, tierIndex: number | undefined) => string;
+    pyramidMarketState: {
+      TRENDING_UP: string;
+      TRENDING_DOWN: string;
+      CONSOLIDATION: string;
+      BREAKOUT_UP: string;
+      BREAKOUT_DOWN: string;
+    };
   };
   settings: {
     sectionGlobalDefaults: string;
@@ -297,6 +306,16 @@ export const zh: Translations = {
       exit_take_profit: '🟢 建議停利出場',
       exit_stop_loss: '🔴 建議停損出場',
       hold: '🟡 建議續抱',
+    },
+    sectionPyramidStatus: '金字塔加碼狀態',
+    pyramidStateLabel: (stateLabel, tierIndex) =>
+      tierIndex !== undefined ? `${stateLabel} ／ 第 ${tierIndex} 級加碼` : stateLabel,
+    pyramidMarketState: {
+      TRENDING_UP: '📈 趨勢上',
+      TRENDING_DOWN: '📉 趨勢下',
+      CONSOLIDATION: '⏸️ 盤整凍結',
+      BREAKOUT_UP: '🚀 向上突破',
+      BREAKOUT_DOWN: '⚠️ 向下突破',
     },
   },
   settings: {
@@ -498,6 +517,16 @@ export const en: Translations = {
       exit_take_profit: '🟢 Take-profit exit suggested',
       exit_stop_loss: '🔴 Stop-loss exit suggested',
       hold: '🟡 Hold suggested',
+    },
+    sectionPyramidStatus: 'Pyramid Add-on Status',
+    pyramidStateLabel: (stateLabel, tierIndex) =>
+      tierIndex !== undefined ? `${stateLabel} ／ Tier ${tierIndex}` : stateLabel,
+    pyramidMarketState: {
+      TRENDING_UP: '📈 Trending Up',
+      TRENDING_DOWN: '📉 Trending Down',
+      CONSOLIDATION: '⏸️ Consolidation',
+      BREAKOUT_UP: '🚀 Breakout Up',
+      BREAKOUT_DOWN: '⚠️ Breakout Down',
     },
   },
   settings: {

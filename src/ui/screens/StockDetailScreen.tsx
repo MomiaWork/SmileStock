@@ -9,6 +9,7 @@ import {
   type NotificationHistoryEntry,
 } from '../../db/notification-log-repo';
 import { getPriceHistory } from '../../db/price-history-repo';
+import { getPyramidState } from '../../db/pyramid-state-repo';
 import { getDb } from '../../db/schema';
 import { addTrade, getCurrentPosition, getTrades, type Trade } from '../../db/trade-repo';
 import {
@@ -21,6 +22,11 @@ import { adviseEntry, type EntryAdvice } from '../../strategy-engine/entry-advis
 import { evaluateStrategy } from '../../strategy-engine/engine';
 import { adviseExit, type ExitAdvice } from '../../strategy-engine/exit-advisor';
 import type { Position } from '../../strategy-engine/pnl';
+import {
+  evaluatePyramid,
+  type PyramidConfig,
+  type PyramidSignal,
+} from '../../strategy-engine/pyramid-state-machine';
 import { classifyTrend, type TrendClassification } from '../../strategy-engine/trend-classifier';
 import type { PricePoint, StrategySignal } from '../../strategy-engine/types';
 import PriceLineChart from '../components/PriceLineChart';
@@ -52,6 +58,7 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   const [item, setItem] = useState<WatchlistItem | null>(null);
   const [history, setHistory] = useState<PricePoint[]>([]);
   const [statuses, setStatuses] = useState<StrategyStatus[]>([]);
+  const [pyramidStatuses, setPyramidStatuses] = useState<PyramidSignal[]>([]);
   const [notifications, setNotifications] = useState<NotificationHistoryEntry[]>([]);
   const [trend, setTrend] = useState<TrendClassification | null>(null);
   const [entryAdvices, setEntryAdvices] = useState<{ type: string; advice: EntryAdvice }[]>([]);
@@ -84,8 +91,16 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
     setHistory(adviceHistory);
 
     const configs = await getEnabledStrategyConfigs(db, watchlistId);
+    // 金字塔加碼是有狀態策略，不走 evaluateStrategy/adviseEntry（那套是網格/RSI/均線交叉
+    // 共用的無狀態進場建議管線），另外用自己的區塊顯示狀態
+    const nonPyramidConfigs = configs.filter(
+      (config): config is typeof config & { type: Exclude<typeof config.type, 'pyramid'> } =>
+        config.type !== 'pyramid',
+    );
+    const pyramidConfigs = configs.filter((config) => config.type === 'pyramid');
+
     setStatuses(
-      configs.map((config) => ({
+      nonPyramidConfigs.map((config) => ({
         type: config.type,
         signal: evaluateStrategy(adviceHistory, { type: config.type, params: config.params }),
       })),
@@ -94,7 +109,7 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
     setTrend(classifyTrend(adviceHistory));
 
     setEntryAdvices(
-      configs.map((config) => ({
+      nonPyramidConfigs.map((config) => ({
         type: config.type,
         advice: adviseEntry(
           adviceHistory,
@@ -102,6 +117,22 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
           { momentumConfirmEnabled: watchlistItem.entryConfirmEnabled },
         ),
       })),
+    );
+
+    // 唯讀試算目前訊號給畫面顯示用，不在這裡改寫 pyramid_state——狀態的實際推進由
+    // 「立即檢查」/背景任務（run-check.ts）負責，這裡只是讀最後一次存的狀態算出目前是什麼樣子
+    setPyramidStatuses(
+      await Promise.all(
+        pyramidConfigs.map(async (config) => {
+          const prevState = await getPyramidState(db, config.id);
+          const { signal } = evaluatePyramid(
+            adviceHistory,
+            config.params as PyramidConfig,
+            prevState ?? undefined,
+          );
+          return signal;
+        }),
+      ),
     );
 
     const currentPosition = await getCurrentPosition(db, watchlistId);
@@ -214,6 +245,21 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
           ))
         )}
       </Section>
+
+      {pyramidStatuses.length > 0 && (
+        <Section title={strings.stockDetail.sectionPyramidStatus}>
+          {pyramidStatuses.map((signal, i) => (
+            <StatusRow
+              key={i}
+              title={strings.stockDetail.pyramidStateLabel(
+                strings.stockDetail.pyramidMarketState[signal.state],
+                signal.tierIndex,
+              )}
+              subtitle={signal.reason}
+            />
+          ))}
+        </Section>
+      )}
 
       <Section title={strings.stockDetail.sectionPosition}>
         {position ? (

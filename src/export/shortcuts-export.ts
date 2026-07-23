@@ -5,9 +5,11 @@ import { Linking } from 'react-native';
 
 import { getCurrentPrices, mergeLivePriceIntoHistory } from '../data-fetch/current-price';
 import { getPriceHistory } from '../db/price-history-repo';
+import { getPyramidState } from '../db/pyramid-state-repo';
 import { getClaudeShortcutName } from '../db/settings-repo';
 import { getEnabledStrategyConfigs, getWatchlist } from '../db/watchlist-repo';
 import { evaluateStrategy } from '../strategy-engine/engine';
+import { evaluatePyramid, type PyramidConfig } from '../strategy-engine/pyramid-state-machine';
 
 export interface StockExportSummary {
   stockCode: string;
@@ -40,18 +42,33 @@ export async function buildExportSummary(db: SQLiteDatabase): Promise<StockExpor
     const latest = adviceHistory[adviceHistory.length - 1];
     const configs = await getEnabledStrategyConfigs(db, item.id);
 
-    summaries.push({
-      stockCode: item.stockCode,
-      stockName: item.stockName,
-      latestPrice: latest?.close ?? null,
-      latestDate: latest?.date ?? null,
-      strategies: configs.map((config) => {
+    const strategies = await Promise.all(
+      configs.map(async (config) => {
+        // 金字塔加碼是有狀態策略，不走 evaluateStrategy——用目前已存的狀態唯讀試算一次訊號
+        // 給匯出文字用，不會在這裡改寫狀態（改寫由「立即檢查」/背景任務的 run-check.ts 負責）
+        if (config.type === 'pyramid') {
+          const prevState = await getPyramidState(db, config.id);
+          const { signal } = evaluatePyramid(
+            adviceHistory,
+            config.params as PyramidConfig,
+            prevState ?? undefined,
+          );
+          return { type: config.type, triggered: signal.triggered, reason: signal.reason };
+        }
         const signal = evaluateStrategy(adviceHistory, {
           type: config.type,
           params: config.params,
         });
         return { type: config.type, triggered: signal.triggered, reason: signal.reason };
       }),
+    );
+
+    summaries.push({
+      stockCode: item.stockCode,
+      stockName: item.stockName,
+      latestPrice: latest?.close ?? null,
+      latestDate: latest?.date ?? null,
+      strategies,
     });
   }
 

@@ -2,6 +2,13 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { StrategyType } from '../strategy-engine/engine';
 
+/**
+ * strategy_config.type 實際可存的值比 evaluateStrategy 分派用的 StrategyType 多一種：
+ * 'pyramid' 是有狀態策略，不走 evaluateStrategy（見 engine.ts 開頭註解），但一樣存在
+ * 同一張 strategy_config 表裡，所以這裡的型別要單獨加，不能直接沿用 StrategyType。
+ */
+export type PersistedStrategyType = StrategyType | 'pyramid';
+
 export interface WatchlistItem {
   id: number;
   stockCode: string;
@@ -17,7 +24,7 @@ export interface WatchlistItem {
 export interface StrategyConfigRow {
   id: number;
   watchlistId: number;
-  type: StrategyType;
+  type: PersistedStrategyType;
   params: unknown;
   enabled: boolean;
 }
@@ -34,7 +41,7 @@ export interface NewWatchlistItem {
 
 export interface NewStrategyConfig {
   watchlistId: number;
-  type: StrategyType;
+  type: PersistedStrategyType;
   params: unknown;
   enabled?: boolean;
 }
@@ -170,7 +177,7 @@ export async function getWatchlist(db: SQLiteDatabase): Promise<WatchlistItem[]>
 function mapStrategyConfigRow(row: {
   id: number;
   watchlist_id: number;
-  type: StrategyType;
+  type: PersistedStrategyType;
   params: string;
   enabled: number;
 }): StrategyConfigRow {
@@ -190,7 +197,7 @@ export async function getEnabledStrategyConfigs(
   const rows = await db.getAllAsync<{
     id: number;
     watchlist_id: number;
-    type: StrategyType;
+    type: PersistedStrategyType;
     params: string;
     enabled: number;
   }>(
@@ -209,7 +216,7 @@ export async function getAllStrategyConfigs(
   const rows = await db.getAllAsync<{
     id: number;
     watchlist_id: number;
-    type: StrategyType;
+    type: PersistedStrategyType;
     params: string;
     enabled: number;
   }>(`SELECT id, watchlist_id, type, params, enabled FROM strategy_config WHERE watchlist_id = ?`, [
@@ -222,6 +229,11 @@ export async function getAllStrategyConfigs(
 /**
  * 編輯股票時用「先刪除該股票所有策略設定、再依表單重新新增」的方式覆蓋，
  * 避免處理新增/更新/刪除三種情況的複雜比對邏輯。
+ *
+ * 注意：刪除 strategy_config 列會透過 ON DELETE CASCADE 一併刪掉對應的 pyramid_state，
+ * 新插入的列拿到新的 id，等於金字塔加碼的狀態機每次編輯（哪怕只是改查價間隔這種
+ * 無關欄位）都會被重置回初始狀態。這是已知的限制，不在這次改動範圍內處理——
+ * 要避免誤觸，UI 層應該在使用者編輯已啟用金字塔加碼的股票時明確提示。
  */
 export async function replaceStrategyConfigs(
   db: SQLiteDatabase,

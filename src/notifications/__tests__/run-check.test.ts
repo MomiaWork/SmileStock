@@ -1,6 +1,7 @@
 /* eslint-disable import/first -- jest.mock calls must precede the imports they mock */
 jest.mock('../../db/watchlist-repo');
 jest.mock('../../db/price-history-repo');
+jest.mock('../../db/pyramid-state-repo');
 jest.mock('../../data-fetch/current-price', () => ({
   ...jest.requireActual('../../data-fetch/current-price'),
   getCurrentPrices: jest.fn(),
@@ -14,10 +15,18 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { getCurrentPrices } from '../../data-fetch/current-price';
 import { getPriceHistory } from '../../db/price-history-repo';
+import { getPyramidState, savePyramidState } from '../../db/pyramid-state-repo';
 import { getEnabledStrategyConfigs, getWatchlist } from '../../db/watchlist-repo';
+import { DEFAULT_PYRAMID_PARAMS } from '../../strategy-engine/pyramid-state-machine';
 import type { PricePoint } from '../../strategy-engine/types';
 import { notifyIfNew } from '../local-notification';
-import { checkWatchlistAndNotify } from '../run-check';
+import { checkWatchlistAndNotify, type CheckResultItem } from '../run-check';
+
+/** 測試裡的 mock config 都是 grid/rsi，narrow 掉 pyramid 分支讓 signal/advice 可以直接存取 */
+function nonPyramid(item: CheckResultItem): Extract<CheckResultItem, { strategyType: 'grid' | 'rsi' | 'ma_cross' }> {
+  if (item.strategyType === 'pyramid') throw new Error('expected non-pyramid result');
+  return item;
+}
 
 const fakeDb = {} as SQLiteDatabase;
 const mockGetWatchlist = getWatchlist as jest.Mock;
@@ -25,6 +34,8 @@ const mockGetEnabledStrategyConfigs = getEnabledStrategyConfigs as jest.Mock;
 const mockGetPriceHistory = getPriceHistory as jest.Mock;
 const mockGetCurrentPrices = getCurrentPrices as jest.Mock;
 const mockNotifyIfNew = notifyIfNew as jest.Mock;
+const mockGetPyramidState = getPyramidState as jest.Mock;
+const mockSavePyramidState = savePyramidState as jest.Mock;
 
 function history(closes: number[]): PricePoint[] {
   return closes.map((close, i) => ({
@@ -40,6 +51,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockNotifyIfNew.mockResolvedValue(true);
   mockGetCurrentPrices.mockResolvedValue({});
+  mockGetPyramidState.mockResolvedValue(null);
 });
 
 test('策略觸發但趨勢安全閥尚未確認（wait）也會呼叫 notifyIfNew，signalKey 帶入 action', async () => {
@@ -67,9 +79,9 @@ test('策略觸發但趨勢安全閥尚未確認（wait）也會呼叫 notifyIfN
   const results = await checkWatchlistAndNotify(fakeDb);
 
   expect(results).toHaveLength(1);
-  expect(results[0].signal.triggered).toBe(true);
-  expect(results[0].signal.tierIndex).toBe(2);
-  expect(results[0].advice.action).toBe('wait');
+  expect(nonPyramid(results[0]).signal.triggered).toBe(true);
+  expect(nonPyramid(results[0]).signal.tierIndex).toBe(2);
+  expect(nonPyramid(results[0]).advice.action).toBe('wait');
   expect(mockNotifyIfNew).toHaveBeenCalledWith(
     fakeDb,
     expect.objectContaining({
@@ -106,7 +118,7 @@ test('策略觸發且趨勢已確認止穩反彈（enter）時推播文案不同
 
   const results = await checkWatchlistAndNotify(fakeDb);
 
-  expect(results[0].advice.action).toBe('enter');
+  expect(nonPyramid(results[0]).advice.action).toBe('enter');
   expect(mockNotifyIfNew).toHaveBeenCalledWith(
     fakeDb,
     expect.objectContaining({
@@ -143,9 +155,9 @@ test('watchlist 開啟進場確認濾網時，趨勢已確認但動能訊號不�
 
   const results = await checkWatchlistAndNotify(fakeDb);
 
-  expect(results[0].signal.triggered).toBe(true);
-  expect(results[0].advice.action).toBe('wait');
-  expect(results[0].advice.reason).toContain('動能');
+  expect(nonPyramid(results[0]).signal.triggered).toBe(true);
+  expect(nonPyramid(results[0]).advice.action).toBe('wait');
+  expect(nonPyramid(results[0]).advice.reason).toContain('動能');
   expect(mockNotifyIfNew).toHaveBeenCalledWith(
     fakeDb,
     expect.objectContaining({ signalKey: expect.stringContaining(':wait:') }),
@@ -169,8 +181,8 @@ test('未觸發的策略不會呼叫 notifyIfNew', async () => {
 
   const results = await checkWatchlistAndNotify(fakeDb);
 
-  expect(results[0].signal.triggered).toBe(false);
-  expect(results[0].advice.action).toBe('no_signal');
+  expect(nonPyramid(results[0]).signal.triggered).toBe(false);
+  expect(nonPyramid(results[0]).advice.action).toBe('no_signal');
   expect(mockNotifyIfNew).not.toHaveBeenCalled();
 });
 
@@ -228,8 +240,8 @@ test('price_history 最新收盤價還沒跌破門檻，但盤中最新報價已
 
   const results = await checkWatchlistAndNotify(fakeDb);
 
-  expect(results[0].signal.triggered).toBe(true);
-  expect(results[0].signal.tierIndex).toBe(2);
+  expect(nonPyramid(results[0]).signal.triggered).toBe(true);
+  expect(nonPyramid(results[0]).signal.tierIndex).toBe(2);
   expect(mockNotifyIfNew).toHaveBeenCalledWith(
     fakeDb,
     expect.objectContaining({ signalKey: expect.stringContaining(':tier2:') }),
@@ -264,4 +276,67 @@ test('某一檔股票的 notifyIfNew 失敗時，不會中斷其他股票的檢�
   expect(results[0].notifyError).toContain('boom');
   expect(results[1].notified).toBe(true);
   expect(results[1].notifyError).toBeUndefined();
+});
+
+const pyramidTestConfig = {
+  ...DEFAULT_PYRAMID_PARAMS,
+  entryPrice: 100,
+  budget: 45000,
+  weights: [1, 1.5, 2],
+  maShort: 3,
+  maLong: 5,
+  consolidationLookback: 5,
+  atrPeriod: 3,
+  addTriggerPct: 5,
+};
+
+test('金字塔加碼觸發加碼（add）時會發通知，且把新狀態存回 pyramid_state', async () => {
+  mockGetWatchlist.mockResolvedValue([
+    { id: 1, stockCode: 'TEST_PYRAMID', stockName: '測試', budget: 45000, priceCheckIntervalSec: null },
+  ]);
+  mockGetEnabledStrategyConfigs.mockResolvedValue([
+    { id: 10, watchlistId: 1, type: 'pyramid', params: pyramidTestConfig, enabled: true },
+  ]);
+  // 均線確認多頭（maShort>maLong 且收盤價站上maShort），現價126遠高於加碼門檻105（entryPrice100 × 1.05）
+  mockGetPriceHistory.mockResolvedValue(history([100, 104, 108, 112, 116, 120, 126]));
+
+  const results = await checkWatchlistAndNotify(fakeDb);
+
+  expect(results).toHaveLength(1);
+  const [result] = results;
+  if (result.strategyType !== 'pyramid') throw new Error('expected pyramid result');
+  expect(result.pyramidSignal.action).toBe('add');
+  expect(result.pyramidSignal.tierIndex).toBe(1);
+  expect(mockSavePyramidState).toHaveBeenCalledWith(
+    fakeDb,
+    10,
+    expect.objectContaining({ currentTier: 1, currentState: 'TRENDING_UP' }),
+  );
+  expect(mockNotifyIfNew).toHaveBeenCalledWith(
+    fakeDb,
+    expect.objectContaining({
+      signalKey: expect.stringContaining('pyramid:add:tier1:'),
+      title: expect.stringContaining('🟢'),
+    }),
+  );
+});
+
+test('金字塔加碼盤整凍結（freeze）不會發通知，但狀態仍會存回去', async () => {
+  mockGetWatchlist.mockResolvedValue([
+    { id: 1, stockCode: 'TEST_PYRAMID', stockName: '測試', budget: 45000, priceCheckIntervalSec: null },
+  ]);
+  mockGetEnabledStrategyConfigs.mockResolvedValue([
+    { id: 10, watchlistId: 1, type: 'pyramid', params: pyramidTestConfig, enabled: true },
+  ]);
+  // 完全走平：均線糾結 + 區間收斂，三取二成立 -> 盤整凍結，不是使用者要採取行動的時刻
+  mockGetPriceHistory.mockResolvedValue(history(Array(7).fill(100)));
+
+  const results = await checkWatchlistAndNotify(fakeDb);
+
+  const [result] = results;
+  if (result.strategyType !== 'pyramid') throw new Error('expected pyramid result');
+  expect(result.pyramidSignal.action).toBe('freeze');
+  expect(result.notified).toBe(false);
+  expect(mockNotifyIfNew).not.toHaveBeenCalled();
+  expect(mockSavePyramidState).toHaveBeenCalledTimes(1);
 });
