@@ -1,7 +1,15 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import {
+  Alert,
+  type LayoutChangeEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { getCurrentPrices, mergeLivePriceIntoHistory } from '../../data-fetch/current-price';
 import {
@@ -20,7 +28,11 @@ import {
 import { useI18n } from '../../i18n';
 import { adviseEntry, type EntryAdvice } from '../../strategy-engine/entry-advisor';
 import { routeRecommendation, type RoutedRecommendation } from '../../strategy-engine/engine';
-import { adviseExit, type ExitAdvice } from '../../strategy-engine/exit-advisor';
+import {
+  adviseExit,
+  type ExitAdvice,
+  type ExitRegimeContext,
+} from '../../strategy-engine/exit-advisor';
 import type { Position } from '../../strategy-engine/pnl';
 import {
   evaluatePyramid,
@@ -37,6 +49,35 @@ import type { RootStackParamList } from '../navigation/types';
 import { colors, radius, spacing, typography } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'StockDetail'>;
+
+/** 台股一張 = 1000 股，交易紀錄表單的股數建議以整張為單位 */
+const LOT_SIZE = 1000;
+
+interface TradeSuggestion {
+  side: 'buy' | 'sell';
+  price: string;
+  quantity: string;
+}
+
+/**
+ * 把「今天該做的事」的建議金額/出場動作換算成交易紀錄表單的預填值，讓使用者按建議
+ * 操作後不用重新手動算股數。這只是預填，不會自動寫入 DB——實際成交價/股數以使用者
+ * 在下方表單核對、送出的為準（App 不代下單，見 db/trade-repo.ts 的說明）。
+ */
+function suggestTradeInputs(
+  rec: RoutedRecommendation,
+  price: number,
+  currentPosition: Position | null,
+): TradeSuggestion | null {
+  if ((rec.action === 'enter' || rec.action === 'add') && rec.amount) {
+    const lots = Math.max(1, Math.round(rec.amount / price / LOT_SIZE));
+    return { side: 'buy', price: price.toFixed(2), quantity: String(lots * LOT_SIZE) };
+  }
+  if (rec.action === 'exit' && currentPosition) {
+    return { side: 'sell', price: price.toFixed(2), quantity: String(currentPosition.quantity) };
+  }
+  return null;
+}
 
 function StatusRow({ title, subtitle }: { title: string; subtitle: string }): React.JSX.Element {
   return (
@@ -62,12 +103,16 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   const [position, setPosition] = useState<Position | null>(null);
   const [exitAdvice, setExitAdvice] = useState<ExitAdvice | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [advicePrice, setAdvicePrice] = useState<number | null>(null);
 
   const [tradeSide, setTradeSide] = useState<'buy' | 'sell'>('buy');
   const [tradePrice, setTradePrice] = useState('');
   const [tradeQuantity, setTradeQuantity] = useState('');
   const [tradeNote, setTradeNote] = useState('');
   const [savingTrade, setSavingTrade] = useState(false);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const tradeSectionOffsetRef = useRef(0);
 
   const reload = useCallback(async () => {
     const db = await getDb();
@@ -110,15 +155,14 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
     const pyramidPrevState = pyramidConfigEntry
       ? await getPyramidState(db, pyramidConfigEntry.id)
       : null;
-    setPyramidStatus(
-      pyramidConfigEntry
-        ? evaluatePyramid(
-            adviceHistory,
-            pyramidConfigEntry.params as PyramidConfig,
-            pyramidPrevState ?? undefined,
-          ).signal
-        : null,
-    );
+    const pyramidResult = pyramidConfigEntry
+      ? evaluatePyramid(
+          adviceHistory,
+          pyramidConfigEntry.params as PyramidConfig,
+          pyramidPrevState ?? undefined,
+        )
+      : null;
+    setPyramidStatus(pyramidResult?.signal ?? null);
 
     // 「今天該做的事」是這一頁的主角：只要有啟用任一策略就走 routeRecommendation，
     // 由市場狀態收斂成單一行動指示（兩策略同開時避免矛盾建議與重複動用預算；
@@ -140,12 +184,28 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
     const currentPrice =
       currentPriceInfo?.price ??
       (priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].close : null);
+    setAdvicePrice(currentPrice);
+
+    // 金字塔市場狀態可信時，出場提醒改用同一套棘輪停損動態判斷，不再只看固定 %，
+    // 理由與 recommendation-router 的路由邏輯一致：詳見 exit-advisor.ts 的說明
+    const exitRegimeContext: ExitRegimeContext | undefined = pyramidResult
+      ? {
+          state: pyramidResult.signal.state,
+          stopPrice: pyramidResult.signal.stopPrice,
+          dataSufficient: pyramidResult.signal.action !== 'insufficient_data',
+        }
+      : undefined;
     setExitAdvice(
       currentPosition && currentPrice !== null
-        ? adviseExit(currentPosition, currentPrice, {
-            takeProfitPercent: watchlistItem.takeProfitPercent ?? undefined,
-            stopLossPercent: watchlistItem.stopLossPercent ?? undefined,
-          })
+        ? adviseExit(
+            currentPosition,
+            currentPrice,
+            {
+              takeProfitPercent: watchlistItem.takeProfitPercent ?? undefined,
+              stopLossPercent: watchlistItem.stopLossPercent ?? undefined,
+            },
+            exitRegimeContext,
+          )
         : null,
     );
 
@@ -201,6 +261,33 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
     }
   };
 
+  // 「今天該做的事」建議的股數/價格，換算成下方交易紀錄表單的預填值；只在有明確
+  // 可執行動作（進場/加碼/出場）且有目前價格時才提供，純顯示用途的建議不會有這個按鈕
+  const tradeSuggestion =
+    routedRecommendation && advicePrice !== null
+      ? suggestTradeInputs(routedRecommendation, advicePrice, position)
+      : null;
+
+  const handlePrefillTrade = (): void => {
+    if (!tradeSuggestion) return;
+    setTradeSide(tradeSuggestion.side);
+    setTradePrice(tradeSuggestion.price);
+    setTradeQuantity(tradeSuggestion.quantity);
+    setTradeNote('');
+    scrollRef.current?.scrollTo({
+      y: Math.max(0, tradeSectionOffsetRef.current - spacing.lg),
+      animated: true,
+    });
+    Alert.alert(
+      strings.stockDetail.prefillTradeDoneTitle,
+      strings.stockDetail.prefillTradeDoneMessage,
+    );
+  };
+
+  const handleTradeSectionLayout = (event: LayoutChangeEvent): void => {
+    tradeSectionOffsetRef.current = event.nativeEvent.layout.y;
+  };
+
   if (!item) {
     return (
       <View style={styles.loadingContainer}>
@@ -210,7 +297,7 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
       <Section title={strings.stockDetail.sectionTodayAction}>
         {routedRecommendation ? (
           <StatusRow
@@ -226,6 +313,14 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
             title={strings.stockDetail.noStrategyTitle}
             subtitle={strings.stockDetail.noStrategySubtitle}
           />
+        )}
+        {tradeSuggestion && (
+          <View style={styles.prefillButtonWrap}>
+            <PrimaryButton
+              title={strings.stockDetail.prefillTradeButton}
+              onPress={handlePrefillTrade}
+            />
+          </View>
         )}
       </Section>
 
@@ -296,39 +391,41 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
         )}
       </Section>
 
-      <Section title={strings.stockDetail.sectionRecordTrade}>
-        <View style={styles.segmentRow}>
-          {(['buy', 'sell'] as const).map((side) => (
-            <Pressable
-              key={side}
-              onPress={() => setTradeSide(side)}
-              style={[styles.segment, tradeSide === side && styles.segmentActive]}
-            >
-              <Text style={[styles.segmentText, tradeSide === side && styles.segmentTextActive]}>
-                {side === 'buy' ? strings.stockDetail.buy : strings.stockDetail.sell}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <InputRow
-          label={strings.stockDetail.fieldTradePrice}
-          value={tradePrice}
-          onChangeText={setTradePrice}
-          keyboardType="numeric"
-        />
-        <InputRow
-          label={strings.stockDetail.fieldQuantity}
-          value={tradeQuantity}
-          onChangeText={setTradeQuantity}
-          keyboardType="numeric"
-        />
-        <InputRow
-          label={strings.stockDetail.fieldNote}
-          placeholder={strings.stockDetail.placeholderOptional}
-          value={tradeNote}
-          onChangeText={setTradeNote}
-        />
-      </Section>
+      <View onLayout={handleTradeSectionLayout}>
+        <Section title={strings.stockDetail.sectionRecordTrade}>
+          <View style={styles.segmentRow}>
+            {(['buy', 'sell'] as const).map((side) => (
+              <Pressable
+                key={side}
+                onPress={() => setTradeSide(side)}
+                style={[styles.segment, tradeSide === side && styles.segmentActive]}
+              >
+                <Text style={[styles.segmentText, tradeSide === side && styles.segmentTextActive]}>
+                  {side === 'buy' ? strings.stockDetail.buy : strings.stockDetail.sell}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <InputRow
+            label={strings.stockDetail.fieldTradePrice}
+            value={tradePrice}
+            onChangeText={setTradePrice}
+            keyboardType="numeric"
+          />
+          <InputRow
+            label={strings.stockDetail.fieldQuantity}
+            value={tradeQuantity}
+            onChangeText={setTradeQuantity}
+            keyboardType="numeric"
+          />
+          <InputRow
+            label={strings.stockDetail.fieldNote}
+            placeholder={strings.stockDetail.placeholderOptional}
+            value={tradeNote}
+            onChangeText={setTradeNote}
+          />
+        </Section>
+      </View>
       <View style={styles.primaryButtonWrap}>
         <PrimaryButton
           title={
@@ -408,6 +505,10 @@ const styles = StyleSheet.create({
   primaryButtonWrap: {
     marginTop: -spacing.sm,
     marginBottom: spacing.lg,
+  },
+  prefillButtonWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
   chartCard: {
     alignItems: 'center',

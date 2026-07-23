@@ -136,6 +136,9 @@ export interface Translations {
       tierIndex: number | undefined,
       amount: number | undefined,
     ) => string;
+    prefillTradeButton: string;
+    prefillTradeDoneTitle: string;
+    prefillTradeDoneMessage: string;
   };
   settings: {
     sectionGlobalDefaults: string;
@@ -352,6 +355,9 @@ export const zh: Translations = {
     },
     todayActionTitle: (label, tierIndex, amount) =>
       `${label}${tierIndex !== undefined ? `／第 ${tierIndex} 級` : ''}${amount !== undefined ? `，約 ${amount.toFixed(0)} 元` : ''}`,
+    prefillTradeButton: '我已照建議操作，帶入交易紀錄',
+    prefillTradeDoneTitle: '已帶入交易紀錄表單',
+    prefillTradeDoneMessage: '已依建議帶入下方表單的股數與價格，請核對實際成交結果後再送出。',
   },
   settings: {
     sectionGlobalDefaults: '全域預設',
@@ -585,6 +591,10 @@ export const en: Translations = {
     },
     todayActionTitle: (label, tierIndex, amount) =>
       `${label}${tierIndex !== undefined ? ` ／ Tier ${tierIndex}` : ''}${amount !== undefined ? `, about ${amount.toFixed(0)}` : ''}`,
+    prefillTradeButton: 'I did this — fill in trade record',
+    prefillTradeDoneTitle: 'Trade form filled in',
+    prefillTradeDoneMessage:
+      'The suggested quantity and price were filled into the form below — please check them against what you actually traded before submitting.',
   },
   settings: {
     sectionGlobalDefaults: 'Global Defaults',

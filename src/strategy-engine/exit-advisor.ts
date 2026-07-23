@@ -1,10 +1,23 @@
 import { calculatePnl, type PnlResult, type Position } from './pnl';
+import { MARKET_STATE_LABEL, type MarketState } from './pyramid-state-machine';
 
 export type ExitAction = 'exit_take_profit' | 'exit_stop_loss' | 'hold';
 
 export interface ExitAdvisorConfig {
   takeProfitPercent?: number;
   stopLossPercent?: number;
+}
+
+/**
+ * 金字塔狀態機算出的市場狀態與棘輪式移動停損價（只上移不下移），用來讓持倉出場
+ * 建議跟「今天該做的事」卡片（recommendation-router）採同一套動態判斷，而不是自己
+ * 另外套一組跟走勢無關的固定 % 門檻。dataSufficient 為 false（金字塔仍在
+ * insufficient_data 階段、市場狀態還不可信）時視同沒有這個 context，退回固定 % 邏輯。
+ */
+export interface ExitRegimeContext {
+  state: MarketState;
+  stopPrice: number;
+  dataSufficient: boolean;
 }
 
 export interface ExitAdvice {
@@ -25,15 +38,67 @@ function isExitAdvisorConfig(config: unknown): config is ExitAdvisorConfig {
   return true;
 }
 
+function adviseByFixedPercent(
+  pnl: PnlResult,
+  takeProfitPercent: number,
+  stopLossPercent: number,
+): { action: ExitAction; reason: string } {
+  if (pnl.returnRatePercent >= takeProfitPercent) {
+    return {
+      action: 'exit_take_profit',
+      reason: `報酬率 ${pnl.returnRatePercent.toFixed(2)}% 已達停利門檻 ${takeProfitPercent}%，建議出場獲利了結`,
+    };
+  }
+
+  if (pnl.returnRatePercent <= -stopLossPercent) {
+    return {
+      action: 'exit_stop_loss',
+      reason: `報酬率 ${pnl.returnRatePercent.toFixed(2)}% 已跌破停損門檻 -${stopLossPercent}%，建議出場停損`,
+    };
+  }
+
+  return {
+    action: 'hold',
+    reason: `報酬率 ${pnl.returnRatePercent.toFixed(2)}%，尚未達停利 ${takeProfitPercent}% 或停損 -${stopLossPercent}% 門檻，建議續抱`,
+  };
+}
+
 /**
- * 出場建議：依使用者設定的停利/停損百分比（相對於持倉平均成本）判斷。
- * 報酬率達到停利門檻視為 exit_take_profit，跌破停損門檻（負值）視為
- * exit_stop_loss，兩者都沒到就 hold。停利/停損同時符合時，優先停利。
+ * 趨勢／突破狀態下不設固定停利點：只要棘輪式移動停損沒被跌破，就算報酬率已經
+ * 超過過去的固定門檻也續抱，避免正常回檔被錯誤地當成出場訊號（見
+ * docs/pyramid-state-machine-spec.md revision #8 的理由，這裡套用到持倉出場提醒）。
+ */
+function adviseByRegime(
+  currentPrice: number,
+  pnl: PnlResult,
+  regime: ExitRegimeContext,
+): { action: ExitAction; reason: string } {
+  const stateLabel = MARKET_STATE_LABEL[regime.state];
+
+  if (currentPrice <= regime.stopPrice) {
+    return {
+      action: 'exit_stop_loss',
+      reason: `目前價格 ${currentPrice} 已跌破${stateLabel}的移動停損 ${regime.stopPrice.toFixed(2)}（棘輪式只上移不下移），建議出場停損，目前報酬率 ${pnl.returnRatePercent.toFixed(2)}%`,
+    };
+  }
+
+  return {
+    action: 'hold',
+    reason: `${stateLabel}持續，防守停損在 ${regime.stopPrice.toFixed(2)}（隨走勢動態上移），續抱不設固定停利點，目前報酬率 ${pnl.returnRatePercent.toFixed(2)}%`,
+  };
+}
+
+/**
+ * 出場建議。金字塔狀態機判斷市場處於趨勢或突破狀態、且狀態可信（非
+ * insufficient_data）時，改用棘輪式移動停損動態判斷（跌破才出場，不設固定停利點）；
+ * 盤整、沒有可信市場狀態（未啟用金字塔策略、或資料還在累積中）時，退回使用者設定的
+ * 固定停利/停損 % 當備援——盤整區間本身就有清楚的上下緣，固定門檻在這個狀態下仍合理。
  */
 export function adviseExit(
   position: Position,
   currentPrice: number,
   config?: ExitAdvisorConfig,
+  regime?: ExitRegimeContext,
 ): ExitAdvice {
   if (!isExitAdvisorConfig(config)) {
     throw new Error(
@@ -52,25 +117,10 @@ export function adviseExit(
 
   const pnl = calculatePnl(position, currentPrice);
 
-  if (pnl.returnRatePercent >= takeProfitPercent) {
-    return {
-      action: 'exit_take_profit',
-      pnl,
-      reason: `報酬率 ${pnl.returnRatePercent.toFixed(2)}% 已達停利門檻 ${takeProfitPercent}%，建議出場獲利了結`,
-    };
-  }
+  const useRegime = regime?.dataSufficient && regime.state !== 'CONSOLIDATION';
+  const { action, reason } = useRegime
+    ? adviseByRegime(currentPrice, pnl, regime)
+    : adviseByFixedPercent(pnl, takeProfitPercent, stopLossPercent);
 
-  if (pnl.returnRatePercent <= -stopLossPercent) {
-    return {
-      action: 'exit_stop_loss',
-      pnl,
-      reason: `報酬率 ${pnl.returnRatePercent.toFixed(2)}% 已跌破停損門檻 -${stopLossPercent}%，建議出場停損`,
-    };
-  }
-
-  return {
-    action: 'hold',
-    pnl,
-    reason: `報酬率 ${pnl.returnRatePercent.toFixed(2)}%，尚未達停利 ${takeProfitPercent}% 或停損 -${stopLossPercent}% 門檻，建議續抱`,
-  };
+  return { action, reason, pnl };
 }
