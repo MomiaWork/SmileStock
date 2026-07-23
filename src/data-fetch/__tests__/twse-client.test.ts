@@ -86,6 +86,30 @@ describe('fetchExtendedHistoricalQuotes', () => {
     expect(dates).toEqual([...dates].sort());
   });
 
+  test('當天完全沒有成交（開高低收為 "--"）時跳過該列，不整批噴錯中斷', async () => {
+    const noTradeRow = [
+      '115/07/03',
+      '0',
+      '0',
+      '--',
+      '--',
+      '--',
+      '--',
+      ' 0.00',
+      '0',
+    ];
+    mockStockDayResponse('OK', [
+      stockDayRow('115/07/01', '100'),
+      noTradeRow,
+      stockDayRow('115/07/02', '101'),
+    ]);
+
+    const quotes = await fetchExtendedHistoricalQuotes('2330', 1);
+
+    expect(quotes).toHaveLength(2);
+    expect(quotes.map((q) => q.date)).toEqual(['2026-07-01', '2026-07-02']);
+  });
+
   test('回溯到掛牌前的月份（stat 非 OK）回傳空陣列，不中斷其餘月份的抓取', async () => {
     let call = 0;
     global.fetch = jest.fn().mockImplementation(() => {

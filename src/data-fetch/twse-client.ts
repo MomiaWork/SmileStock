@@ -163,7 +163,8 @@ async function fetchMonthlyQuotes(code: string, yyyymm01: string): Promise<TwseD
     throw new Error(`twse-client: 股票 ${code} 的月資料缺少 data 陣列`);
   }
 
-  return raw.data.map((row): TwseDailyQuote => {
+  const quotes: TwseDailyQuote[] = [];
+  for (const row of raw.data) {
     if (
       !Array.isArray(row) ||
       row.length < STOCK_DAY_FIELD_COUNT ||
@@ -171,7 +172,12 @@ async function fetchMonthlyQuotes(code: string, yyyymm01: string): Promise<TwseD
     ) {
       throw new Error(`twse-client: 股票 ${code} 的月資料列格式不正確：${JSON.stringify(row)}`);
     }
-    return {
+    // 當天完全沒有成交（例如暫停交易）時，TWSE 開高低收欄位會是 "--" 而不是省略該列，
+    // 這不是格式錯誤，是「這天沒有價格資料」的合法表示，跳過該列即可，不用整批噴錯中斷
+    if (row[STOCK_DAY_INDEX.close] === '--') {
+      continue;
+    }
+    quotes.push({
       code,
       name: code,
       date: parseSlashRocDate(row[STOCK_DAY_INDEX.date]),
@@ -180,8 +186,9 @@ async function fetchMonthlyQuotes(code: string, yyyymm01: string): Promise<TwseD
       lowestPrice: parseNumberField(row[STOCK_DAY_INDEX.low], 'LowestPrice', code),
       closingPrice: parseNumberField(row[STOCK_DAY_INDEX.close], 'ClosingPrice', code),
       tradeVolume: parseNumberField(row[STOCK_DAY_INDEX.volume], 'TradeVolume', code),
-    };
-  });
+    });
+  }
+  return quotes;
 }
 
 const BACKFILL_MAX_MONTHS_BACK = 6;
