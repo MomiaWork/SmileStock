@@ -24,7 +24,6 @@ const basePyramidConfig: PyramidConfig = {
   stopBufferPct: 4,
   trailMaBufferPct: 2,
   addTriggerPct: 5,
-  hardStopPct: 30,
 };
 
 const gridConfig: { type: 'grid'; params: GridStrategyConfig } = {
@@ -60,7 +59,6 @@ function makeState(overrides: Partial<PyramidState>): PyramidState {
 const flatCloses = [100, 100, 100, 100, 100, 100, 100];
 const risingCloses = [100, 104, 108, 112, 116, 120, 126];
 const fallingCloses = [120, 115, 110, 105, 100, 95, 90];
-const crashCloses = [120, 110, 100, 90, 80, 75, 65];
 
 describe('routeRecommendation', () => {
   it('兩個策略都沒開時回傳 null，交給呼叫端維持原本顯示', () => {
@@ -110,13 +108,14 @@ describe('routeRecommendation', () => {
     expect(result?.reason).toContain('不建議投入新資金');
   });
 
-  it('跌破硬停損 → 不論趨勢，優先顯示出場', () => {
-    const prev = makeState({ currentState: 'TRENDING_UP', lastAddPrice: 110, stopPrice: 95 });
-    const result = routeRecommendation(bars(crashCloses), gridConfig, basePyramidConfig, prev);
+  it('跌破移動停損觸發出場 → 不論網格是否也有訊號，優先顯示出場', () => {
+    // 現價 90 同時也跌破網格三檔門檻（101.85），但金字塔已觸發出場，出場優先於網格建議
+    const prev = makeState({ currentState: 'TRENDING_DOWN', stopPrice: 92 });
+    const result = routeRecommendation(bars(fallingCloses), gridConfig, basePyramidConfig, prev);
     expect(result?.source).toBe('pyramid');
     expect(result?.action).toBe('exit');
     expect(result?.reason).toContain('優先出場');
-    expect(result?.reason).toContain('硬停損觸發');
+    expect(result?.reason).toContain('跌破移動停損');
   });
 
   it('金字塔資料不足時，暫時退回依網格建議並註明原因', () => {

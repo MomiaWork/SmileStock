@@ -44,12 +44,6 @@ export interface Translations {
     placeholderStockName: string;
     fieldBudget: string;
     fieldIntervalSec: string;
-    sectionExit: string;
-    sectionExitFooter: string;
-    fieldTakeProfit: string;
-    placeholderTakeProfit: string;
-    fieldStopLoss: string;
-    placeholderStopLoss: string;
     sectionGrid: string;
     fieldGridEnabled: string;
     fieldAnchorPrice: string;
@@ -79,7 +73,6 @@ export interface Translations {
     addOnStyleEqual: string;
     addOnStylePyramid: string;
     fieldAddOnPace: string;
-    fieldHardStopChoice: string;
     validationPyramid: string;
     pyramidResetWarningTitle: string;
     pyramidResetWarningMessage: string;
@@ -181,13 +174,7 @@ export interface Translations {
     resultsSectionTitle: string;
     disclaimer: (code: string, months: number) => string;
     noResults: string;
-    resultLine1: (
-      spacing: number,
-      tier: number,
-      filterLabel: string,
-      tp: number,
-      sl: number,
-    ) => string;
+    resultLine1: (spacing: number, tier: number, filterLabel: string) => string;
     filterOn: string;
     filterOff: string;
     resultLine2: (totalReturn: string, maxDrawdown: string, tradeCount: number) => string;
@@ -195,7 +182,7 @@ export interface Translations {
     buyHoldLabel: (returnPercent: string) => string;
     strategyTypeGrid: string;
     strategyTypePyramid: string;
-    pyramidResultLine1: (weights: string, addTrigger: number, hardStop: number) => string;
+    pyramidResultLine1: (weights: string, addTrigger: number) => string;
     riskLevelLabel: (level: string) => string;
     riskLevelLow: string;
     riskLevelMedium: string;
@@ -259,12 +246,6 @@ export const zh: Translations = {
     placeholderStockName: '例如 台積電',
     fieldBudget: '預算',
     fieldIntervalSec: '查價間隔（秒）',
-    sectionExit: '出場設定',
-    sectionExitFooter: '持有部位時用來判斷是否建議出場，留空使用預設值（停利 10%／停損 8%）',
-    fieldTakeProfit: '停利 %',
-    placeholderTakeProfit: '留空預設 10',
-    fieldStopLoss: '停損 %',
-    placeholderStopLoss: '留空預設 8',
     sectionGrid: '微笑曲線網格',
     fieldGridEnabled: '啟用網格策略',
     fieldAnchorPrice: '錨定價',
@@ -287,7 +268,7 @@ export const zh: Translations = {
     saveFailedTitle: '儲存失敗',
     sectionPyramid: '金字塔加碼',
     sectionPyramidFooter:
-      '順勢策略：確認漲勢成立才加碼，加碼幅度隨漲幅拉大，移動停損只上移不下移；跌破入場價一定比例會無條件停損。趨勢判斷用的均線等參數固定用內建設定，不開放調整，避免貼合單一股票的歷史雜訊。',
+      '順勢策略：確認漲勢成立才加碼，加碼幅度隨漲幅拉大，移動停損只上移不下移，跌破才建議出場或減碼，由你自己判斷是否要動作。沒有固定停利/停損%，也不設無條件出場的硬停損——下跌可能只是暫時拉回，是否出場由你參考當下建議決定。趨勢判斷用的均線等參數固定用內建設定，不開放調整，避免貼合單一股票的歷史雜訊。',
     fieldPyramidEnabled: '啟用金字塔加碼',
     fieldEntryPrice: '進場價',
     placeholderEntryFetching: '查詢中...',
@@ -296,7 +277,6 @@ export const zh: Translations = {
     addOnStyleEqual: '等權重（每級加碼金額相同）',
     addOnStylePyramid: '金字塔式（越漲加越多）',
     fieldAddOnPace: '加碼步調（漲多少 % 加碼一次）',
-    fieldHardStopChoice: '硬停損（跌破入場價幾 % 無條件出場）',
     validationPyramid: '請確認金字塔加碼的進場價已正確填寫（需大於 0）',
     pyramidResetWarningTitle: '注意：儲存會重置金字塔加碼狀態',
     pyramidResetWarningMessage:
@@ -415,8 +395,8 @@ export const zh: Translations = {
     disclaimer: (code, months) =>
       `以上是根據 ${code} 過去約 ${months} 個月自己的歷史資料試算出來的結果，不是保證未來也會這樣表現，僅供參考。`,
     noResults: '資料不足，無法產生建議',
-    resultLine1: (spacing, tier, filterLabel, tp, sl) =>
-      `間距 ${spacing}% ／ ${tier} 檔 ／ 確認濾網${filterLabel} ／ 停利${tp}% ／ 停損${sl}%`,
+    resultLine1: (spacing, tier, filterLabel) =>
+      `間距 ${spacing}% ／ ${tier} 檔 ／ 確認濾網${filterLabel}`,
     filterOn: '開',
     filterOff: '關',
     resultLine2: (totalReturn, maxDrawdown, tradeCount) =>
@@ -426,8 +406,8 @@ export const zh: Translations = {
       `同期間單純買進持有報酬率：${returnPercent}% ／ 幫你判斷這段期間主動操作是否真的比不管它更好`,
     strategyTypeGrid: '網格',
     strategyTypePyramid: '金字塔加碼',
-    pyramidResultLine1: (weights, addTrigger, hardStop) =>
-      `加碼權重 ${weights} ／ 加碼觸發漲幅 ${addTrigger}% ／ 硬停損 ${hardStop}%`,
+    pyramidResultLine1: (weights, addTrigger) =>
+      `加碼權重 ${weights} ／ 加碼觸發漲幅 ${addTrigger}%`,
     riskLevelLabel: (level) => `風險：${level}`,
     riskLevelLow: '低',
     riskLevelMedium: '中',
@@ -493,13 +473,6 @@ export const en: Translations = {
     placeholderStockName: 'e.g. TSMC',
     fieldBudget: 'Budget',
     fieldIntervalSec: 'Price Check Interval (sec)',
-    sectionExit: 'Exit Settings',
-    sectionExitFooter:
-      'Used to decide exit advice while holding a position. Leave blank to use the defaults (10% take-profit / 8% stop-loss).',
-    fieldTakeProfit: 'Take Profit %',
-    placeholderTakeProfit: 'Defaults to 10',
-    fieldStopLoss: 'Stop Loss %',
-    placeholderStopLoss: 'Defaults to 8',
     sectionGrid: 'Smile Curve Grid',
     fieldGridEnabled: 'Enable Grid Strategy',
     fieldAnchorPrice: 'Anchor Price',
@@ -525,7 +498,7 @@ export const en: Translations = {
     saveFailedTitle: 'Save Failed',
     sectionPyramid: 'Pyramid Add-on',
     sectionPyramidFooter:
-      "A trend-following strategy: only adds once an uptrend is confirmed, add-on size grows with the move, trailing stop only moves up. A hard stop fires unconditionally once price falls a set percentage below entry. Trend-detection parameters (moving averages, etc.) are fixed at built-in defaults and not user-adjustable, to avoid fitting one stock's historical noise.",
+      "A trend-following strategy: only adds once an uptrend is confirmed, add-on size grows with the move, trailing stop only moves up, and a break below it advises exiting or trimming — you decide whether to act. There's no fixed take-profit/stop-loss % and no unconditional hard stop: a drop may just be a temporary pullback, so whether to exit is your call based on the current advice. Trend-detection parameters (moving averages, etc.) are fixed at built-in defaults and not user-adjustable, to avoid fitting one stock's historical noise.",
     fieldPyramidEnabled: 'Enable Pyramid Add-on',
     fieldEntryPrice: 'Entry Price',
     placeholderEntryFetching: 'Fetching...',
@@ -534,7 +507,6 @@ export const en: Translations = {
     addOnStyleEqual: 'Equal weight (same amount each add-on)',
     addOnStylePyramid: 'Pyramid style (larger amounts as it rises)',
     fieldAddOnPace: 'Add-on Pace (% rise before adding again)',
-    fieldHardStopChoice: 'Hard Stop (% below entry for unconditional exit)',
     validationPyramid:
       'Please make sure the pyramid add-on entry price is filled in correctly (must be greater than 0)',
     pyramidResetWarningTitle: 'Note: Saving Resets Pyramid Add-on State',
@@ -656,8 +628,8 @@ export const en: Translations = {
     disclaimer: (code, months) =>
       `The above is backtested using ${code}'s own historical data over roughly the past ${months} months. It does not guarantee future performance — for reference only.`,
     noResults: 'Not enough data to generate suggestions',
-    resultLine1: (spacing, tier, filterLabel, tp, sl) =>
-      `Spacing ${spacing}% ／ ${tier} tiers ／ Confirm filter ${filterLabel} ／ TP ${tp}% ／ SL ${sl}%`,
+    resultLine1: (spacing, tier, filterLabel) =>
+      `Spacing ${spacing}% ／ ${tier} tiers ／ Confirm filter ${filterLabel}`,
     filterOn: 'On',
     filterOff: 'Off',
     resultLine2: (totalReturn, maxDrawdown, tradeCount) =>
@@ -667,8 +639,8 @@ export const en: Translations = {
       `Buy-and-hold return over the same period: ${returnPercent}% ／ Use this to judge whether active management actually beat just holding`,
     strategyTypeGrid: 'Grid',
     strategyTypePyramid: 'Pyramid Add-on',
-    pyramidResultLine1: (weights, addTrigger, hardStop) =>
-      `Add-on weights ${weights} ／ Add trigger ${addTrigger}% ／ Hard stop ${hardStop}%`,
+    pyramidResultLine1: (weights, addTrigger) =>
+      `Add-on weights ${weights} ／ Add trigger ${addTrigger}%`,
     riskLevelLabel: (level) => `Risk: ${level}`,
     riskLevelLow: 'Low',
     riskLevelMedium: 'Medium',

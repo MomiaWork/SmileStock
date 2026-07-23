@@ -54,13 +54,6 @@ export interface PyramidConfig {
   trailMaBufferPct: number;
   /** 相對上一次加碼價的加碼觸發漲幅（%） */
   addTriggerPct: number;
-  /**
-   * 硬停損（%），災難性停損水位 = entryPrice × (1 − 此值)，只在 config 決定當下算一次，
-   * 不隨加碼次數或平均成本重算。跟戰術棘輪停損（stopPrice）是兩條獨立防線：
-   * 戰術停損負責正常拉回時鎖利、只在確認轉空狀態才會觸發出場；硬停損不論目前市場狀態，
-   * 收盤價跌破就無條件出場，防止「一路攤平、戰術停損跟著鬆」變成無下限風險。見規格修訂 #7。
-   */
-  hardStopPct: number;
 }
 
 export const DEFAULT_PYRAMID_PARAMS = {
@@ -77,7 +70,6 @@ export const DEFAULT_PYRAMID_PARAMS = {
   stopBufferPct: 4,
   trailMaBufferPct: 2.5,
   addTriggerPct: 5,
-  hardStopPct: 35,
 } as const;
 
 export interface PyramidState {
@@ -108,8 +100,6 @@ export interface PyramidSignal {
   state: MarketState;
   /** 戰術棘輪停損：跟著加碼價/短均線移動，只在確認轉空狀態才會真的觸發出場 */
   stopPrice: number;
-  /** 硬停損：entryPrice × (1 − hardStopPct)，固定不隨加碼重算，不論市場狀態跌破就出場 */
-  hardStopPrice: number;
 }
 
 export interface PyramidResult {
@@ -136,7 +126,6 @@ function isPyramidConfig(config: unknown): config is PyramidConfig {
     'stopBufferPct',
     'trailMaBufferPct',
     'addTriggerPct',
-    'hardStopPct',
   ];
   if (!numberKeys.every((k) => typeof c[k] === 'number')) return false;
   return Array.isArray(c.weights) && c.weights.every((w) => typeof w === 'number');
@@ -178,9 +167,6 @@ function validateConfig(config: PyramidConfig): void {
     if (!((config[key] as number) > 0)) {
       throw new Error(`pyramid: ${key} 必須大於 0`);
     }
-  }
-  if (!(config.hardStopPct > 0 && config.hardStopPct < 100)) {
-    throw new Error('pyramid: hardStopPct 必須介於 0 與 100 之間（不含）');
   }
 }
 
@@ -301,8 +287,6 @@ export function evaluatePyramid(
   }
   validateConfig(config);
 
-  const hardStopPrice = config.entryPrice * (1 - config.hardStopPct / 100);
-
   const minRequired = minRequiredBars(config);
   if (history.length < minRequired) {
     const nextState = prevState ?? initialState(config, null);
@@ -313,7 +297,6 @@ export function evaluatePyramid(
         reason: `資料不足：狀態判斷需要至少 ${minRequired} 筆價格資料，目前只有 ${history.length} 筆`,
         state: nextState.currentState,
         stopPrice: nextState.stopPrice,
-        hardStopPrice,
       },
       nextState,
     };
@@ -422,23 +405,6 @@ export function evaluatePyramid(
   const stateLabel = MARKET_STATE_LABEL[next.currentState];
   const maxTier = config.weights.length - 1;
 
-  // 硬停損：不論目前市場狀態（含 TRENDING_UP 途中），收盤跌破入門價固定水位就無條件出場。
-  // 跟下面戰術棘輪停損（只在確認轉空狀態才觸發）是兩條獨立防線，這條刻意略過狀態判斷，
-  // 就是為了避免「一路攤平、戰術停損跟著鬆」變成無下限風險（見規格修訂 #7）。
-  if (close <= hardStopPrice) {
-    return {
-      signal: {
-        triggered: true,
-        action: 'exit',
-        reason: `硬停損觸發：目前價格 ${close} 已跌破入門價 ${config.entryPrice} 的硬停損水位 ${hardStopPrice.toFixed(2)}（入門價 × (1−${config.hardStopPct}%)），不論目前市場狀態為${stateLabel}，建議全部出場`,
-        state: next.currentState,
-        stopPrice: next.stopPrice,
-        hardStopPrice,
-      },
-      nextState: next,
-    };
-  }
-
   // 行為分派
   if (next.currentState === 'BREAKOUT_UP' || next.currentState === 'TRENDING_UP') {
     const isBreakout = next.currentState === 'BREAKOUT_UP';
@@ -453,7 +419,6 @@ export function evaluatePyramid(
             reason: `${stateLabel}：加碼條件成立，但 ${maxTier} 級加碼檔位已用完，僅續抱`,
             state: next.currentState,
             stopPrice: next.stopPrice,
-            hardStopPrice,
           },
           nextState: next,
         };
@@ -474,7 +439,6 @@ export function evaluatePyramid(
           amount,
           state: next.currentState,
           stopPrice: next.stopPrice,
-          hardStopPrice,
         },
         nextState: next,
       };
@@ -486,7 +450,6 @@ export function evaluatePyramid(
         reason: `${stateLabel}：目前價格 ${close} 尚未達加碼門檻 ${addTriggerPrice.toFixed(2)}，續抱並維持停損 ${next.stopPrice.toFixed(2)}`,
         state: next.currentState,
         stopPrice: next.stopPrice,
-        hardStopPrice,
       },
       nextState: next,
     };
@@ -501,7 +464,6 @@ export function evaluatePyramid(
           reason: `${stateLabel}：目前價格 ${close} 已跌破移動停損 ${next.stopPrice.toFixed(2)}，建議出場或減碼`,
           state: next.currentState,
           stopPrice: next.stopPrice,
-          hardStopPrice,
         },
         nextState: next,
       };
@@ -513,7 +475,6 @@ export function evaluatePyramid(
         reason: `${stateLabel}：停止加碼，目前價格 ${close} 尚未跌破移動停損 ${next.stopPrice.toFixed(2)}`,
         state: next.currentState,
         stopPrice: next.stopPrice,
-        hardStopPrice,
       },
       nextState: next,
     };
@@ -530,7 +491,6 @@ export function evaluatePyramid(
       reason: `${stateLabel}：凍結加碼，停損維持 ${next.stopPrice.toFixed(2)}${pendingNote}`,
       state: next.currentState,
       stopPrice: next.stopPrice,
-      hardStopPrice,
     },
     nextState: next,
   };

@@ -8,8 +8,6 @@ export interface BacktestParams {
   spacingPercent: number;
   tierCount: number;
   momentumConfirmEnabled: boolean;
-  takeProfitPercent: number;
-  stopLossPercent: number;
 }
 
 export interface BacktestResult {
@@ -56,10 +54,10 @@ export function runGridBacktest(
     const currentPrice = slice[slice.length - 1].close;
 
     if (position !== null) {
-      const exitAdvice = adviseExit(position, currentPrice, {
-        takeProfitPercent: params.takeProfitPercent,
-        stopLossPercent: params.stopLossPercent,
-      });
+      // 沒有讓使用者設定或回測挑選停利/停損%——一律用 exit-advisor 內建的固定提醒門檻
+      // （見 exit-advisor.ts 的 DEFAULT_TAKE_PROFIT_PERCENT/DEFAULT_STOP_LOSS_PERCENT），
+      // 跟 App 裡「持倉與損益」卡片用的是同一套，回測結果才會跟實際提醒行為一致
+      const exitAdvice = adviseExit(position, currentPrice);
       if (exitAdvice.action !== 'hold') {
         cash += position.quantity * currentPrice;
         position = null;

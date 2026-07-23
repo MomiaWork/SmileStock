@@ -1,8 +1,4 @@
-import {
-  evaluatePyramid,
-  type PyramidConfig,
-  type PyramidState,
-} from '../pyramid-state-machine';
+import { evaluatePyramid, type PyramidConfig, type PyramidState } from '../pyramid-state-machine';
 import type { PricePoint } from '../types';
 
 /**
@@ -28,7 +24,6 @@ const baseConfig: PyramidConfig = {
   stopBufferPct: 4,
   trailMaBufferPct: 2,
   addTriggerPct: 5,
-  hardStopPct: 30, // 硬停損水位 = 100 × 0.7 = 70
 };
 
 function bars(closes: number[], volumes?: number[]): PricePoint[] {
@@ -81,15 +76,6 @@ describe('pyramid-state-machine', () => {
       expect(() =>
         evaluatePyramid(bars(flatCloses), { ...baseConfig, maShort: 5, maLong: 5 }),
       ).toThrow(/maShort/);
-    });
-
-    it('hardStopPct 不在 0~100 之間時丟出錯誤', () => {
-      expect(() => evaluatePyramid(bars(flatCloses), { ...baseConfig, hardStopPct: 0 })).toThrow(
-        /hardStopPct/,
-      );
-      expect(() => evaluatePyramid(bars(flatCloses), { ...baseConfig, hardStopPct: 100 })).toThrow(
-        /hardStopPct/,
-      );
     });
   });
 
@@ -302,50 +288,6 @@ describe('pyramid-state-machine', () => {
       const { signal } = evaluatePyramid(bars(fallingCloses), baseConfig, prev);
       expect(signal.triggered).toBe(false);
       expect(signal.action).toBe('hold');
-    });
-  });
-
-  describe('硬停損', () => {
-    // entryPrice 100、hardStopPct 30 → 硬停損水位 = 70，不隨加碼或平均成本重算
-    const crashCloses = [120, 110, 100, 90, 80, 75, 65];
-
-    it('即使確認狀態仍是 TRENDING_UP（尚未切換到轉空），跌破硬停損仍無條件出場', () => {
-      const prev = makeState({ currentState: 'TRENDING_UP', lastAddPrice: 110, stopPrice: 95 });
-      const { signal, nextState } = evaluatePyramid(bars(crashCloses), baseConfig, prev);
-      expect(signal.triggered).toBe(true);
-      expect(signal.action).toBe('exit');
-      expect(signal.reason).toContain('硬停損觸發');
-      expect(signal.hardStopPrice).toBeCloseTo(70);
-      // 戰術棘輪停損不受硬停損觸發影響，nextState 仍照常更新
-      expect(nextState.currentState).toBeDefined();
-    });
-
-    it('盤整狀態下跌破硬停損，優先於盤整凍結規則觸發出場', () => {
-      const prev = makeState({
-        currentState: 'CONSOLIDATION',
-        lastAddPrice: 110,
-        stopPrice: 95,
-        rangeHigh: 200,
-        rangeLow: 50,
-      });
-      const { signal } = evaluatePyramid(bars(crashCloses), baseConfig, prev);
-      expect(signal.action).toBe('exit');
-      expect(signal.reason).toContain('硬停損觸發');
-    });
-
-    it('現價剛好等於硬停損水位時觸發（邊界含等於）', () => {
-      const closes = [120, 110, 100, 90, 80, 75, 70];
-      const prev = makeState({ currentState: 'TRENDING_UP', lastAddPrice: 110, stopPrice: 95 });
-      const { signal } = evaluatePyramid(bars(closes), baseConfig, prev);
-      expect(signal.action).toBe('exit');
-      expect(signal.reason).toContain('硬停損觸發');
-    });
-
-    it('尚未跌破硬停損時不受影響，一般流程照常判斷並回傳 hardStopPrice 供 UI 顯示', () => {
-      const prev = makeState({ lastAddPrice: 125 });
-      const { signal } = evaluatePyramid(bars(risingCloses), baseConfig, prev);
-      expect(signal.action).toBe('hold');
-      expect(signal.hardStopPrice).toBeCloseTo(70);
     });
   });
 });

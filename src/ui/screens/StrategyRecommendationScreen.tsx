@@ -95,8 +95,6 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
         spacingPercent: item.params.spacingPercent,
         tierCount: item.params.tierCount,
         entryConfirmEnabled: item.params.momentumConfirmEnabled,
-        takeProfitPercent: item.params.takeProfitPercent,
-        stopLossPercent: item.params.stopLossPercent,
       },
     });
   };
@@ -113,7 +111,6 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
         stockName: analyzedName,
         weightsProfile,
         addTriggerPct: item.params.addTriggerPct,
-        hardStopPct: item.params.hardStopPct,
       },
     });
   };
@@ -178,8 +175,6 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
                       item.params.momentumConfirmEnabled
                         ? strings.strategyRecommendation.filterOn
                         : strings.strategyRecommendation.filterOff,
-                      item.params.takeProfitPercent,
-                      item.params.stopLossPercent,
                     )}
                   </Text>
                 ) : (
@@ -187,7 +182,6 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
                     {strings.strategyRecommendation.pyramidResultLine1(
                       item.params.weights.join(':'),
                       item.params.addTriggerPct,
-                      item.params.hardStopPct,
                     )}
                   </Text>
                 )}

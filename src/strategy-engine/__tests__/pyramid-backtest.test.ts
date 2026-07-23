@@ -27,7 +27,6 @@ const baseParams: PyramidBacktestParams = {
   stopBufferPct: 4,
   trailMaBufferPct: 2,
   addTriggerPct: 5,
-  hardStopPct: 30,
 };
 
 describe('runPyramidBacktest', () => {
@@ -65,16 +64,6 @@ describe('runPyramidBacktest', () => {
     // 起始部位10000股數100 + 15000/112 + 20000/120 賣在100元的總損益
     expect(result.totalReturnPercent).toBeCloseTo(-10.98, 1);
     expect(result.maxDrawdownPercent).toBeCloseTo(28.57, 1);
-  });
-
-  test('跌破硬停損時無條件出場，不論戰術移動停損是否已觸發', () => {
-    // 暖身7天(100，盤整)進場後隔天直接崩跌到硬停損水位(100*(1-30%)=70)以下
-    const closes = [...Array(7).fill(100), 65];
-    const result = runPyramidBacktest(bars(closes), baseParams, 45000);
-    // 進場(day6@100) + 硬停損出場(day7@65) = 2筆
-    expect(result.tradeCount).toBe(2);
-    // 起始部位100股 @100元進場、65元出場：損益 = 100*(65-100) = -3500，占預算45000 ≈ -7.78%
-    expect(result.totalReturnPercent).toBeCloseTo(-7.78, 1);
   });
 
   test('進場後全程盤整凍結、從未加碼也未出場：只有進場一筆交易', () => {

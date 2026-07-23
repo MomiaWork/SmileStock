@@ -25,7 +25,7 @@ describe('recommendStrategyParams', () => {
     });
   });
 
-  test('資料足夠時，網格3×3×2×3=54組合＋金字塔2×3×2=12組合混合排序，回傳前 5 名', () => {
+  test('資料足夠時，網格3×3×2=18組合＋金字塔2×3=6組合混合排序，回傳前 5 名', () => {
     const { recommendations } = recommendStrategyParams(syntheticHistory(300));
     expect(recommendations).toHaveLength(5);
   });
@@ -58,8 +58,6 @@ describe('recommendStrategyParams', () => {
             spacingPercent: expect.any(Number),
             tierCount: expect.any(Number),
             momentumConfirmEnabled: expect.any(Boolean),
-            takeProfitPercent: expect.any(Number),
-            stopLossPercent: expect.any(Number),
           }),
         );
       } else {
@@ -67,7 +65,6 @@ describe('recommendStrategyParams', () => {
           expect.objectContaining({
             weights: expect.any(Array),
             addTriggerPct: expect.any(Number),
-            hardStopPct: expect.any(Number),
           }),
         );
       }

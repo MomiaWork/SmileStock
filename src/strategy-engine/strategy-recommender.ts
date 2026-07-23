@@ -35,24 +35,18 @@ export function classifyRisk(maxDrawdownPercent: number): RiskLevel {
 const SPACING_OPTIONS = [3, 5, 8];
 const TIER_COUNT_OPTIONS = [4, 6, 8];
 const MOMENTUM_OPTIONS = [false, true];
-const EXIT_PRESETS: { takeProfitPercent: number; stopLossPercent: number }[] = [
-  { takeProfitPercent: 10, stopLossPercent: 8 },
-  { takeProfitPercent: 15, stopLossPercent: 10 },
-  { takeProfitPercent: 20, stopLossPercent: 12 },
-];
 
 /** 金字塔加碼權重：等權重（每級加碼金額相同）vs 金字塔式（越漲加越多），
  * 其餘市場狀態判斷參數（均線、盤整、ATR 等）維持規格預設值，不在回測比較裡調整——
  * 那些是「怎麼判斷趨勢」的參數，不是使用者的風險偏好，亂調容易只是貼合歷史雜訊。
- * 這三組（權重／加碼觸發／硬停損）也是 WatchlistForm 簡化 UI 唯一開放使用者選的三個
- * 選項，直接 export 給表單重用，確保表單能選到的組合永遠跟這裡回測驗證過的組合一致，
+ * 這兩組（權重／加碼觸發）也是 WatchlistForm 簡化 UI 唯一開放使用者選的選項，
+ * 直接 export 給表單重用，確保表單能選到的組合永遠跟這裡回測驗證過的組合一致，
  * 不會兩邊各自維護一份數字造成漂移。 */
 export const PYRAMID_WEIGHTS_OPTIONS: number[][] = [
   [1, 1, 1, 1],
   [1, 1.5, 2, 2.5],
 ];
 export const PYRAMID_ADD_TRIGGER_OPTIONS = [3, 5, 8];
-export const PYRAMID_HARD_STOP_OPTIONS = [20, 35];
 
 export type PyramidWeightsProfile = 'equal' | 'pyramid';
 
@@ -71,9 +65,7 @@ function buildGridParamCombinations(): BacktestParams[] {
   for (const spacingPercent of SPACING_OPTIONS) {
     for (const tierCount of TIER_COUNT_OPTIONS) {
       for (const momentumConfirmEnabled of MOMENTUM_OPTIONS) {
-        for (const exitPreset of EXIT_PRESETS) {
-          combos.push({ spacingPercent, tierCount, momentumConfirmEnabled, ...exitPreset });
-        }
+        combos.push({ spacingPercent, tierCount, momentumConfirmEnabled });
       }
     }
   }
@@ -84,9 +76,7 @@ function buildPyramidParamCombinations(): PyramidBacktestParams[] {
   const combos: PyramidBacktestParams[] = [];
   for (const weights of PYRAMID_WEIGHTS_OPTIONS) {
     for (const addTriggerPct of PYRAMID_ADD_TRIGGER_OPTIONS) {
-      for (const hardStopPct of PYRAMID_HARD_STOP_OPTIONS) {
-        combos.push({ ...DEFAULT_PYRAMID_PARAMS, weights, addTriggerPct, hardStopPct });
-      }
+      combos.push({ ...DEFAULT_PYRAMID_PARAMS, weights, addTriggerPct });
     }
   }
   return combos;

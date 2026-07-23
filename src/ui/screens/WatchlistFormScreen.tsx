@@ -23,7 +23,6 @@ import {
 } from '../../strategy-engine/pyramid-state-machine';
 import {
   PYRAMID_ADD_TRIGGER_OPTIONS,
-  PYRAMID_HARD_STOP_OPTIONS,
   PYRAMID_WEIGHTS_OPTIONS,
   pyramidWeightsForProfile,
   type PyramidWeightsProfile,
@@ -57,12 +56,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
   const [stockName, setStockName] = useState(prefill?.stockName ?? '');
   const [budget, setBudget] = useState('100000');
   const [intervalSec, setIntervalSec] = useState(String(DEFAULT_GLOBAL_INTERVAL_SEC));
-  const [takeProfitPercent, setTakeProfitPercent] = useState(
-    gridPrefill ? String(gridPrefill.takeProfitPercent) : '',
-  );
-  const [stopLossPercent, setStopLossPercent] = useState(
-    gridPrefill ? String(gridPrefill.stopLossPercent) : '',
-  );
 
   const [gridEnabled, setGridEnabled] = useState(gridPrefill !== undefined);
   const [gridAnchorPrice, setGridAnchorPrice] = useState('');
@@ -84,9 +77,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
   );
   const [pyramidAddTriggerPct, setPyramidAddTriggerPct] = useState(
     pyramidPrefill?.addTriggerPct ?? PYRAMID_ADD_TRIGGER_OPTIONS[1],
-  );
-  const [pyramidHardStopPct, setPyramidHardStopPct] = useState(
-    pyramidPrefill?.hardStopPct ?? PYRAMID_HARD_STOP_OPTIONS[0],
   );
   // 編輯畫面載入時，這檔標的原本是不是已經有啟用中的金字塔加碼設定——用來判斷儲存時
   // 要不要提示「會重置狀態」，新增流程（不管有沒有 pyramidPrefill）都不用提示，
@@ -131,8 +121,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
           ? String(item.priceCheckIntervalSec)
           : String(await getGlobalDefaultIntervalSec(db)),
       );
-      if (item.takeProfitPercent !== null) setTakeProfitPercent(String(item.takeProfitPercent));
-      if (item.stopLossPercent !== null) setStopLossPercent(String(item.stopLossPercent));
       setEntryConfirmEnabled(item.entryConfirmEnabled);
 
       const configs = await getAllStrategyConfigs(db, watchlistId);
@@ -151,7 +139,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
             p.weights.join(',') === PYRAMID_WEIGHTS_OPTIONS[0].join(',') ? 'equal' : 'pyramid',
           );
           setPyramidAddTriggerPct(p.addTriggerPct);
-          setPyramidHardStopPct(p.hardStopPct);
           setHadPyramidBeforeEdit(true);
         }
       }
@@ -287,8 +274,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       stockName: stockName.trim(),
       budget: budgetNum,
       priceCheckIntervalSec: toNumberOrUndefined(intervalSec) ?? null,
-      takeProfitPercent: toNumberOrUndefined(takeProfitPercent) ?? null,
-      stopLossPercent: toNumberOrUndefined(stopLossPercent) ?? null,
       entryConfirmEnabled,
     };
 
@@ -298,7 +283,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       budget: budgetNum,
       weights: pyramidWeightsForProfile(pyramidWeightsProfile),
       addTriggerPct: pyramidAddTriggerPct,
-      hardStopPct: pyramidHardStopPct,
     };
 
     try {
@@ -413,26 +397,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
         />
       </Section>
 
-      <Section
-        title={strings.watchlistForm.sectionExit}
-        footer={strings.watchlistForm.sectionExitFooter}
-      >
-        <InputRow
-          label={strings.watchlistForm.fieldTakeProfit}
-          placeholder={strings.watchlistForm.placeholderTakeProfit}
-          value={takeProfitPercent}
-          onChangeText={setTakeProfitPercent}
-          keyboardType="numeric"
-        />
-        <InputRow
-          label={strings.watchlistForm.fieldStopLoss}
-          placeholder={strings.watchlistForm.placeholderStopLoss}
-          value={stopLossPercent}
-          onChangeText={setStopLossPercent}
-          keyboardType="numeric"
-        />
-      </Section>
-
       <Section title={strings.watchlistForm.sectionGrid}>
         {[
           <Row key="switch" label={strings.watchlistForm.fieldGridEnabled}>
@@ -515,17 +479,6 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
                     }))}
                     value={pyramidAddTriggerPct}
                     onChange={setPyramidAddTriggerPct}
-                  />
-                </View>,
-                <Row key="hardStop" label={strings.watchlistForm.fieldHardStopChoice} />,
-                <View key="hardStopChoice" style={styles.choiceWrap}>
-                  <ChoiceGroup
-                    options={PYRAMID_HARD_STOP_OPTIONS.map((pct) => ({
-                      value: pct,
-                      label: `${pct}%`,
-                    }))}
-                    value={pyramidHardStopPct}
-                    onChange={setPyramidHardStopPct}
                   />
                 </View>,
               ]
