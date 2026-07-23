@@ -1,4 +1,4 @@
-import { recommendStrategyParams } from '../strategy-recommender';
+import { classifyRisk, recommendStrategyParams } from '../strategy-recommender';
 import type { PricePoint } from '../types';
 
 /** 產生一段有漲有跌、足夠長的合成走勢，用來驗證組合數量與排序，不驗證精確數值 */
@@ -37,20 +37,20 @@ describe('recommendStrategyParams', () => {
     expect(buyHoldReturnPercent).toBeCloseTo(expected, 5);
   });
 
-  test('回傳結果依風險調整分數（報酬率 ÷ max(最大回撤,1)）由高到低排序', () => {
+  test('回傳結果依總報酬率由高到低排序', () => {
     const { recommendations } = recommendStrategyParams(syntheticHistory(300));
-    const scores = recommendations.map(
-      (r) => r.result.totalReturnPercent / Math.max(r.result.maxDrawdownPercent, 1),
-    );
-    for (let i = 1; i < scores.length; i += 1) {
-      expect(scores[i]).toBeLessThanOrEqual(scores[i - 1]);
+    for (let i = 1; i < recommendations.length; i += 1) {
+      expect(recommendations[i].result.totalReturnPercent).toBeLessThanOrEqual(
+        recommendations[i - 1].result.totalReturnPercent,
+      );
     }
   });
 
-  test('每筆結果都帶有策略類型標籤與對應的完整參數組合', () => {
+  test('每筆結果都帶有策略類型標籤、對應的完整參數組合、依最大回撤算出的風險等級', () => {
     const { recommendations } = recommendStrategyParams(syntheticHistory(300));
     for (const item of recommendations) {
       expect(['grid', 'pyramid']).toContain(item.strategyType);
+      expect(item.riskLevel).toBe(classifyRisk(item.result.maxDrawdownPercent));
       if (item.strategyType === 'grid') {
         expect(item.params).toEqual(
           expect.objectContaining({
@@ -71,5 +71,22 @@ describe('recommendStrategyParams', () => {
         );
       }
     }
+  });
+});
+
+describe('classifyRisk', () => {
+  test('最大回撤低於8%為低風險', () => {
+    expect(classifyRisk(0)).toBe('low');
+    expect(classifyRisk(7.99)).toBe('low');
+  });
+
+  test('最大回撤介於8%~20%（不含20%）為中風險', () => {
+    expect(classifyRisk(8)).toBe('medium');
+    expect(classifyRisk(19.99)).toBe('medium');
+  });
+
+  test('最大回撤達20%以上為高風險', () => {
+    expect(classifyRisk(20)).toBe('high');
+    expect(classifyRisk(50)).toBe('high');
   });
 });

@@ -4,7 +4,7 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fetchExtendedHistoricalQuotes, fetchRealtimeQuotes } from '../../data-fetch/twse-client';
 import { useI18n } from '../../i18n';
-import type { RankedRecommendation } from '../../strategy-engine/strategy-recommender';
+import type { RankedRecommendation, RiskLevel } from '../../strategy-engine/strategy-recommender';
 import { recommendStrategyParams } from '../../strategy-engine/strategy-recommender';
 import type { PricePoint } from '../../strategy-engine/types';
 import PrimaryButton from '../components/PrimaryButton';
@@ -17,10 +17,21 @@ type Props = NativeStackScreenProps<RootStackParamList, 'StrategyRecommendation'
 
 const BACKTEST_MONTHS = 24;
 
+const riskTagStyles: Record<RiskLevel, { color: string }> = {
+  low: { color: colors.profit },
+  medium: { color: colors.warning },
+  high: { color: colors.destructive },
+};
+
 export default function StrategyRecommendationScreen({
   navigation,
 }: Props): React.JSX.Element {
   const { strings } = useI18n();
+  const riskLevelText: Record<RiskLevel, string> = {
+    low: strings.strategyRecommendation.riskLevelLow,
+    medium: strings.strategyRecommendation.riskLevelMedium,
+    high: strings.strategyRecommendation.riskLevelHigh,
+  };
   const [stockCode, setStockCode] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<RankedRecommendation[] | null>(null);
@@ -124,11 +135,16 @@ export default function StrategyRecommendationScreen({
                 <Text style={styles.rankBadgeText}>{index + 1}</Text>
               </View>
               <View style={styles.cardBody}>
-                <Text style={styles.typeTagText}>
-                  {item.strategyType === 'grid'
-                    ? strings.strategyRecommendation.strategyTypeGrid
-                    : strings.strategyRecommendation.strategyTypePyramid}
-                </Text>
+                <View style={styles.tagRow}>
+                  <Text style={styles.typeTagText}>
+                    {item.strategyType === 'grid'
+                      ? strings.strategyRecommendation.strategyTypeGrid
+                      : strings.strategyRecommendation.strategyTypePyramid}
+                  </Text>
+                  <Text style={[styles.riskTagText, riskTagStyles[item.riskLevel]]}>
+                    {strings.strategyRecommendation.riskLevelLabel(riskLevelText[item.riskLevel])}
+                  </Text>
+                </View>
                 {item.strategyType === 'grid' ? (
                   <Text style={styles.resultTitle}>
                     {strings.strategyRecommendation.resultLine1(
@@ -209,9 +225,18 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.footnote,
   },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   typeTagText: {
     ...typography.footnote,
     color: colors.tint,
+    fontWeight: '700',
+  },
+  riskTagText: {
+    ...typography.footnote,
     fontWeight: '700',
   },
   pyramidNoteText: {

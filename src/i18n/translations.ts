@@ -158,6 +158,10 @@ export interface Translations {
     strategyTypePyramid: string;
     pyramidResultLine1: (weights: string, addTrigger: number, hardStop: number) => string;
     pyramidApplyUnavailable: string;
+    riskLevelLabel: (level: string) => string;
+    riskLevelLow: string;
+    riskLevelMedium: string;
+    riskLevelHigh: string;
   };
   priceChart: {
     insufficientData: string;
@@ -331,7 +335,7 @@ export const zh: Translations = {
     insufficientDataMessage: (code, months) =>
       `${code} 過去 ${months} 個月的歷史資料不足以進行回測分析`,
     analyzeFailedTitle: '分析失敗',
-    resultsSectionTitle: '建議設定（網格＋金字塔加碼混合，依風險調整後報酬排序，前 5 名）',
+    resultsSectionTitle: '建議設定（網格＋金字塔加碼混合，依總報酬率排序，前 5 名，各附風險等級）',
     disclaimer: (code, months) =>
       `以上是根據 ${code} 過去約 ${months} 個月自己的歷史資料試算出來的結果，不是保證未來也會這樣表現，僅供參考。`,
     noResults: '資料不足，無法產生建議',
@@ -349,6 +353,10 @@ export const zh: Translations = {
     pyramidResultLine1: (weights, addTrigger, hardStop) =>
       `加碼權重 ${weights} ／ 加碼觸發漲幅 ${addTrigger}% ／ 硬停損 ${hardStop}%`,
     pyramidApplyUnavailable: 'App 尚未支援直接套用金字塔加碼設定，這裡先讓你比較數字',
+    riskLevelLabel: (level) => `風險：${level}`,
+    riskLevelLow: '低',
+    riskLevelMedium: '中',
+    riskLevelHigh: '高',
   },
   priceChart: {
     insufficientData: '歷史資料不足，無法繪製走勢圖',
@@ -529,7 +537,7 @@ export const en: Translations = {
     insufficientDataMessage: (code, months) =>
       `Not enough historical data for ${code} over the past ${months} months to run a backtest`,
     analyzeFailedTitle: 'Analysis Failed',
-    resultsSectionTitle: 'Suggested Settings (grid + pyramid add-on mixed, ranked by risk-adjusted return, top 5)',
+    resultsSectionTitle: 'Suggested Settings (grid + pyramid add-on mixed, ranked by total return, top 5, each tagged with a risk level)',
     disclaimer: (code, months) =>
       `The above is backtested using ${code}'s own historical data over roughly the past ${months} months. It does not guarantee future performance — for reference only.`,
     noResults: 'Not enough data to generate suggestions',
@@ -547,6 +555,10 @@ export const en: Translations = {
     pyramidResultLine1: (weights, addTrigger, hardStop) =>
       `Add-on weights ${weights} ／ Add trigger ${addTrigger}% ／ Hard stop ${hardStop}%`,
     pyramidApplyUnavailable: "The app doesn't support applying a pyramid add-on setting directly yet — this is for comparison only",
+    riskLevelLabel: (level) => `Risk: ${level}`,
+    riskLevelLow: 'Low',
+    riskLevelMedium: 'Medium',
+    riskLevelHigh: 'High',
   },
   priceChart: {
     insufficientData: 'Not enough history to draw a chart',

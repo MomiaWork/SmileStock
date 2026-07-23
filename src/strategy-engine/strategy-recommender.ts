@@ -3,15 +3,28 @@ import { runPyramidBacktest, type PyramidBacktestParams } from './pyramid-backte
 import { DEFAULT_PYRAMID_PARAMS } from './pyramid-state-machine';
 import type { PricePoint } from './types';
 
+export type RiskLevel = 'low' | 'medium' | 'high';
+
 export type RankedRecommendation =
-  | { strategyType: 'grid'; params: BacktestParams; result: BacktestResult }
-  | { strategyType: 'pyramid'; params: PyramidBacktestParams; result: BacktestResult };
+  | { strategyType: 'grid'; params: BacktestParams; result: BacktestResult; riskLevel: RiskLevel }
+  | { strategyType: 'pyramid'; params: PyramidBacktestParams; result: BacktestResult; riskLevel: RiskLevel };
 
 export interface RecommendationResult {
   /** 同期間單純買進持有的報酬率，當所有策略組合的對照基準——策略沒有明顯優於這個數字，
    * 代表這段期間主動操作不見得比單純持有划算，讓使用者自己判斷 */
   buyHoldReturnPercent: number;
   recommendations: RankedRecommendation[];
+}
+
+const RISK_LOW_MAX_DRAWDOWN = 8;
+const RISK_MEDIUM_MAX_DRAWDOWN = 20;
+
+/** 依最大回撤把組合標成低/中/高風險，純粹描述「這組歷史上曾經帳面回落多少」，
+ * 不是在幫使用者做「該不該冒這個險」的判斷——那是使用者自己的事 */
+export function classifyRisk(maxDrawdownPercent: number): RiskLevel {
+  if (maxDrawdownPercent < RISK_LOW_MAX_DRAWDOWN) return 'low';
+  if (maxDrawdownPercent < RISK_MEDIUM_MAX_DRAWDOWN) return 'medium';
+  return 'high';
 }
 
 const SPACING_OPTIONS = [3, 5, 8];
@@ -69,37 +82,34 @@ function buildPyramidParamCombinations(): PyramidBacktestParams[] {
  * 不做全面 grid-search 自動找「最佳解」——單一股票的歷史資料量有限，過度優化容易
  * 只是貼合這段歷史的雜訊，不代表未來也會這樣走。改成跑兩種策略性格各一組精選的參數組合
  * （網格：逢跌加碼的區間震盪策略；金字塔加碼：順勢加碼、趨勢反轉才出場的狀態機策略），
- * 混在一起排序，把結果攤開來讓使用者自己比較、決定，而不是被動接受一個「AI 說最好」的
- * 黑盒答案——也不是只給網格一種選項，畢竟網格本質是逢低承接，遇到單邊噴出的股票（例如
- * 只漲不回頭）幾乎不會成交，這種時候金字塔加碼或甚至單純買進持有可能才是更貼近股性的做法。
+ * 混在一起依報酬率排序、取前 5 名——也不是只給網格一種選項，畢竟網格本質是逢低承接，
+ * 遇到單邊噴出的股票（例如只漲不回頭）幾乎不會成交，這種時候金字塔加碼或甚至單純買進
+ * 持有可能才是更貼近股性的做法。
  *
- * 排序依「報酬率 ÷ max(最大回撤, 1)」這個簡單風險調整分數，避免直接挑報酬率最高
- * 但波動也最大的組合。額外附上同期買進持有報酬率當對照基準，讓使用者能判斷「這段期間
- * 主動操作到底有沒有比單純持有更好」，而不是只看到策略自己的數字就誤以為那是股票能做到
- * 的最好結果。
+ * 直接依報酬率排序、不用風險調整分數：曾經試過「報酬率 ÷ max(最大回撤,1)」這種風險調整
+ * 分數，結果幾乎不交易、回撤趨近於0的網格組合分數會系統性地贏過金字塔加碼「回撤較大但
+ * 報酬高很多」的組合，導致榜單前幾名長期被「安全但賺很少」的組合佔滿，使用者根本看不到
+ * 報酬率高很多的選項存在。改成排名只看報酬率，每筆結果額外附上 riskLevel（依最大回撤
+ * 分低/中/高）讓風險攤開來看，「要不要為了更高報酬承擔更高回撤」交給使用者自己判斷，
+ * 而不是被排序公式的主觀權重先幫他篩掉。額外附上同期買進持有報酬率當對照基準，讓使用者
+ * 能判斷「這段期間主動操作到底有沒有比單純持有更好」。
  */
 export function recommendStrategyParams(history: PricePoint[]): RecommendationResult {
   if (history.length < MIN_REQUIRED_TRADING_DAYS) {
     return { buyHoldReturnPercent: 0, recommendations: [] };
   }
 
-  const gridResults: RankedRecommendation[] = buildGridParamCombinations().map((params) => ({
-    strategyType: 'grid',
-    params,
-    result: runGridBacktest(history, params, REFERENCE_BUDGET),
-  }));
-  const pyramidResults: RankedRecommendation[] = buildPyramidParamCombinations().map((params) => ({
-    strategyType: 'pyramid',
-    params,
-    result: runPyramidBacktest(history, params, REFERENCE_BUDGET),
-  }));
+  const gridResults: RankedRecommendation[] = buildGridParamCombinations().map((params) => {
+    const result = runGridBacktest(history, params, REFERENCE_BUDGET);
+    return { strategyType: 'grid', params, result, riskLevel: classifyRisk(result.maxDrawdownPercent) };
+  });
+  const pyramidResults: RankedRecommendation[] = buildPyramidParamCombinations().map((params) => {
+    const result = runPyramidBacktest(history, params, REFERENCE_BUDGET);
+    return { strategyType: 'pyramid', params, result, riskLevel: classifyRisk(result.maxDrawdownPercent) };
+  });
 
   const results = [...gridResults, ...pyramidResults];
-  results.sort((a, b) => {
-    const scoreA = a.result.totalReturnPercent / Math.max(a.result.maxDrawdownPercent, 1);
-    const scoreB = b.result.totalReturnPercent / Math.max(b.result.maxDrawdownPercent, 1);
-    return scoreB - scoreA;
-  });
+  results.sort((a, b) => b.result.totalReturnPercent - a.result.totalReturnPercent);
 
   const first = history[0].close;
   const last = history[history.length - 1].close;
