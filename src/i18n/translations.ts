@@ -139,6 +139,8 @@ export interface Translations {
     prefillTradeButton: string;
     prefillTradeDoneTitle: string;
     prefillTradeDoneMessage: string;
+    sectionReconciliation: string;
+    reconciliationStatus: { underfunded: string; overfunded: string };
   };
   settings: {
     sectionGlobalDefaults: string;
@@ -358,6 +360,11 @@ export const zh: Translations = {
     prefillTradeButton: '我已照建議操作，帶入交易紀錄',
     prefillTradeDoneTitle: '已帶入交易紀錄表單',
     prefillTradeDoneMessage: '已依建議帶入下方表單的股數與價格，請核對實際成交結果後再送出。',
+    sectionReconciliation: '策略與持倉可能不同步',
+    reconciliationStatus: {
+      underfunded: '⚠️ 持倉小於策略記錄的加碼進度',
+      overfunded: '⚠️ 持倉大於策略記錄的加碼進度',
+    },
   },
   settings: {
     sectionGlobalDefaults: '全域預設',
@@ -595,6 +602,11 @@ export const en: Translations = {
     prefillTradeDoneTitle: 'Trade form filled in',
     prefillTradeDoneMessage:
       'The suggested quantity and price were filled into the form below — please check them against what you actually traded before submitting.',
+    sectionReconciliation: 'Strategy / Position May Be Out of Sync',
+    reconciliationStatus: {
+      underfunded: '⚠️ Position smaller than tracked add-ons',
+      overfunded: '⚠️ Position larger than tracked add-ons',
+    },
   },
   settings: {
     sectionGlobalDefaults: 'Global Defaults',

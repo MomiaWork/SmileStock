@@ -35,6 +35,10 @@ import {
 } from '../../strategy-engine/exit-advisor';
 import type { Position } from '../../strategy-engine/pnl';
 import {
+  reconcilePosition,
+  type ReconciliationMismatch,
+} from '../../strategy-engine/pyramid-reconciliation';
+import {
   evaluatePyramid,
   type PyramidConfig,
   type PyramidSignal,
@@ -104,6 +108,7 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   const [exitAdvice, setExitAdvice] = useState<ExitAdvice | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [advicePrice, setAdvicePrice] = useState<number | null>(null);
+  const [reconciliation, setReconciliation] = useState<ReconciliationMismatch | null>(null);
 
   const [tradeSide, setTradeSide] = useState<'buy' | 'sell'>('buy');
   const [tradePrice, setTradePrice] = useState('');
@@ -181,6 +186,20 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
 
     const currentPosition = await getCurrentPosition(db, watchlistId);
     setPosition(currentPosition);
+
+    // 金字塔的 currentTier 是「假設使用者照建議操作」推進出來的，跟交易紀錄算出的
+    // 實際持倉是兩條沒有互相核對的線；這裡只讀出落差顯示提醒，不會反過來改寫
+    // pyramid_state（見 pyramid-reconciliation.ts 的說明）
+    setReconciliation(
+      pyramidConfigEntry && pyramidResult
+        ? reconcilePosition(
+            pyramidConfigEntry.params as PyramidConfig,
+            pyramidResult.nextState,
+            currentPosition,
+          )
+        : null,
+    );
+
     const currentPrice =
       currentPriceInfo?.price ??
       (priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].close : null);
@@ -323,6 +342,15 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
           </View>
         )}
       </Section>
+
+      {reconciliation && (
+        <Section title={strings.stockDetail.sectionReconciliation}>
+          <StatusRow
+            title={strings.stockDetail.reconciliationStatus[reconciliation.status]}
+            subtitle={reconciliation.reason}
+          />
+        </Section>
+      )}
 
       <Section title={strings.stockDetail.sectionChart}>
         <View style={styles.chartCard}>
