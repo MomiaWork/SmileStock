@@ -80,12 +80,11 @@ export interface Translations {
   stockDetail: {
     sectionChart: string;
     sectionTrend: string;
-    sectionEntryAdvice: string;
     sectionStrategyStatus: string;
+    strategyNameGrid: string;
+    strategyNamePyramid: string;
     noStrategyTitle: string;
     noStrategySubtitle: string;
-    triggered: string;
-    notTriggered: string;
     sectionPosition: string;
     positionSummary: (quantity: number, avgCost: string) => string;
     pnlSummary: (marketValue: string, pnl: string, returnRate: string) => string;
@@ -113,7 +112,6 @@ export interface Translations {
     trend: { smile: string; cry: string; neutral: string };
     entryAction: { enter: string; wait: string; no_signal: string };
     exitAction: { exit_take_profit: string; exit_stop_loss: string; hold: string };
-    sectionPyramidStatus: string;
     pyramidStateLabel: (stateLabel: string, tierIndex: number | undefined) => string;
     pyramidMarketState: {
       TRENDING_UP: string;
@@ -178,7 +176,9 @@ export interface Translations {
     filterOn: string;
     filterOff: string;
     resultLine2: (totalReturn: string, maxDrawdown: string, tradeCount: number) => string;
-    apply: string;
+    comboSectionTitle: string;
+    comboFooter: string;
+    applyCombo: string;
     buyHoldLabel: (returnPercent: string) => string;
     strategyTypeGrid: string;
     strategyTypePyramid: string;
@@ -223,7 +223,7 @@ export const zh: Translations = {
     delete: '刪除',
     checkCompleteTitle: '立即檢查完成',
     checkCompleteMessage: (total, notified, extraNote) =>
-      `檢查了 ${total} 個策略設定，其中 ${notified} 個發出新通知${extraNote}`,
+      `檢查了 ${total} 檔標的，其中 ${notified} 檔發出新的行動提醒${extraNote}`,
     checkFailedTitle: '立即檢查失敗',
     shareFailedTitle: '分享失敗',
     claudeFailedTitle: '執行捷徑失敗',
@@ -285,12 +285,11 @@ export const zh: Translations = {
   stockDetail: {
     sectionChart: '價格走勢',
     sectionTrend: '目前趨勢',
-    sectionEntryAdvice: '進場建議',
-    sectionStrategyStatus: '目前策略狀態',
+    sectionStrategyStatus: '策略狀態細節',
+    strategyNameGrid: '微笑曲線網格',
+    strategyNamePyramid: '金字塔加碼',
     noStrategyTitle: '沒有啟用任何策略',
-    noStrategySubtitle: '到編輯標的頁面開啟策略後會顯示在這裡',
-    triggered: '🔴 已觸發',
-    notTriggered: '⚪️ 未觸發',
+    noStrategySubtitle: '到編輯標的頁面開啟策略後，這裡每天會給出可直接執行的行動指示',
     sectionPosition: '持倉與損益',
     positionSummary: (quantity, avgCost) => `持有 ${quantity} 股，平均成本 ${avgCost}`,
     pnlSummary: (marketValue, pnl, returnRate) =>
@@ -331,7 +330,6 @@ export const zh: Translations = {
       exit_stop_loss: '🔴 建議停損出場',
       hold: '🟡 建議續抱',
     },
-    sectionPyramidStatus: '金字塔加碼狀態',
     pyramidStateLabel: (stateLabel, tierIndex) =>
       tierIndex !== undefined ? `${stateLabel} ／ 第 ${tierIndex} 級加碼` : stateLabel,
     pyramidMarketState: {
@@ -382,7 +380,7 @@ export const zh: Translations = {
   strategyRecommendation: {
     sectionAnalyze: '分析標的',
     sectionAnalyzeFooter: (months) =>
-      `輸入標的代號，用過去約 ${months} 個月的歷史資料試算網格與金字塔加碼兩種策略的表現，幫你決定新增這檔標的時要用哪個策略、哪組設定——網格適合區間震盪，金字塔加碼適合單邊趨勢，走勢不同適合的策略也不同。抓取歷史資料需要依序呼叫多次 TWSE API，可能需要一段時間，請耐心等候。`,
+      `輸入標的代號，用過去約 ${months} 個月的歷史資料試算網格與金字塔加碼兩種策略的表現，幫你找出兩種策略各自最合適的參數。套用後兩個策略會一起啟用，之後每天由 App 依市場狀態（盤整/趨勢）自動決定聽哪個策略的，你不需要預測未來走勢、也不用二選一。抓取歷史資料需要依序呼叫多次 TWSE API，可能需要一段時間，請耐心等候。`,
     fieldStockCode: '標的代碼',
     placeholderStockCode: '例如 2330',
     analyze: '分析',
@@ -391,7 +389,7 @@ export const zh: Translations = {
     insufficientDataMessage: (code, months) =>
       `${code} 過去 ${months} 個月的歷史資料不足以進行回測分析`,
     analyzeFailedTitle: '分析失敗',
-    resultsSectionTitle: '建議設定（網格＋金字塔加碼混合，依總報酬率排序，前 5 名，各附風險等級）',
+    resultsSectionTitle: '回測排行（參考用，網格＋金字塔混合依總報酬率排序，前 5 名）',
     disclaimer: (code, months) =>
       `以上是根據 ${code} 過去約 ${months} 個月自己的歷史資料試算出來的結果，不是保證未來也會這樣表現，僅供參考。`,
     noResults: '資料不足，無法產生建議',
@@ -401,7 +399,10 @@ export const zh: Translations = {
     filterOff: '關',
     resultLine2: (totalReturn, maxDrawdown, tradeCount) =>
       `總報酬 ${totalReturn}% ／ 最大回撤 ${maxDrawdown}% ／ 交易次數 ${tradeCount}`,
-    apply: '套用這組設定',
+    comboSectionTitle: '建議設定（網格＋金字塔一起啟用）',
+    comboFooter:
+      '兩種策略各取回測表現最好的一組參數。套用後兩個策略一起啟用，每天由 App 依市場狀態自動決定聽誰的：盤整時依網格逢低承接，趨勢向上時依金字塔順勢加碼，趨勢向下時明確提醒不進場。',
+    applyCombo: '套用這組設定（雙策略）',
     buyHoldLabel: (returnPercent) =>
       `同期間單純買進持有報酬率：${returnPercent}% ／ 幫你判斷這段期間主動操作是否真的比不管它更好`,
     strategyTypeGrid: '網格',
@@ -448,7 +449,7 @@ export const en: Translations = {
     delete: 'Delete',
     checkCompleteTitle: 'Check Complete',
     checkCompleteMessage: (total, notified, extraNote) =>
-      `Checked ${total} strategy setting(s), ${notified} sent new notification(s)${extraNote}`,
+      `Checked ${total} stock(s), ${notified} sent a new action reminder${extraNote}`,
     checkFailedTitle: 'Check Failed',
     shareFailedTitle: 'Share Failed',
     claudeFailedTitle: 'Shortcut Failed',
@@ -516,12 +517,12 @@ export const en: Translations = {
   stockDetail: {
     sectionChart: 'Price Chart',
     sectionTrend: 'Current Trend',
-    sectionEntryAdvice: 'Entry Advice',
-    sectionStrategyStatus: 'Current Strategy Status',
+    sectionStrategyStatus: 'Strategy Details',
+    strategyNameGrid: 'Smile Curve Grid',
+    strategyNamePyramid: 'Pyramid Add-on',
     noStrategyTitle: 'No strategy enabled',
-    noStrategySubtitle: 'Enable a strategy on the edit screen to see it here',
-    triggered: '🔴 Triggered',
-    notTriggered: '⚪️ Not Triggered',
+    noStrategySubtitle:
+      'Enable a strategy on the edit screen to get a directly actionable instruction here every day',
     sectionPosition: 'Position & P&L',
     positionSummary: (quantity, avgCost) => `Holding ${quantity} shares, avg cost ${avgCost}`,
     pnlSummary: (marketValue, pnl, returnRate) =>
@@ -562,7 +563,6 @@ export const en: Translations = {
       exit_stop_loss: '🔴 Stop-loss exit suggested',
       hold: '🟡 Hold suggested',
     },
-    sectionPyramidStatus: 'Pyramid Add-on Status',
     pyramidStateLabel: (stateLabel, tierIndex) =>
       tierIndex !== undefined ? `${stateLabel} ／ Tier ${tierIndex}` : stateLabel,
     pyramidMarketState: {
@@ -614,7 +614,7 @@ export const en: Translations = {
   strategyRecommendation: {
     sectionAnalyze: 'Analyze Stock',
     sectionAnalyzeFooter: (months) =>
-      `Enter a stock code to backtest both grid and pyramid add-on strategies against roughly the past ${months} months of history, helping you decide which strategy and settings to use when you add this stock — grid suits range-bound moves, pyramid add-on suits sustained trends, so the right strategy depends on how the stock actually moves. Fetching history calls the TWSE API multiple times in sequence, so it may take a while — please be patient.`,
+      `Enter a stock code to backtest both grid and pyramid add-on strategies against roughly the past ${months} months of history and find the best-performing parameters for each. When applied, both strategies are enabled together, and each day the app decides which one to follow based on the market state (range-bound vs. trending) — you don't need to predict the future or pick just one. Fetching history calls the TWSE API multiple times in sequence, so it may take a while — please be patient.`,
     fieldStockCode: 'Stock Code',
     placeholderStockCode: 'e.g. 2330',
     analyze: 'Analyze',
@@ -624,7 +624,7 @@ export const en: Translations = {
       `Not enough historical data for ${code} over the past ${months} months to run a backtest`,
     analyzeFailedTitle: 'Analysis Failed',
     resultsSectionTitle:
-      'Suggested Settings (grid + pyramid add-on mixed, ranked by total return, top 5, each tagged with a risk level)',
+      'Backtest Ranking (for reference — grid + pyramid mixed, ranked by total return, top 5)',
     disclaimer: (code, months) =>
       `The above is backtested using ${code}'s own historical data over roughly the past ${months} months. It does not guarantee future performance — for reference only.`,
     noResults: 'Not enough data to generate suggestions',
@@ -634,7 +634,10 @@ export const en: Translations = {
     filterOff: 'Off',
     resultLine2: (totalReturn, maxDrawdown, tradeCount) =>
       `Total return ${totalReturn}% ／ Max drawdown ${maxDrawdown}% ／ Trades ${tradeCount}`,
-    apply: 'Apply This Setting',
+    comboSectionTitle: 'Suggested Settings (grid + pyramid enabled together)',
+    comboFooter:
+      'The best-performing backtested parameters for each strategy. When applied, both strategies are enabled together, and each day the app decides which one to follow based on the market state: buy the dips with the grid in range-bound markets, add with the pyramid in uptrends, and stay out with a clear reminder in downtrends.',
+    applyCombo: 'Apply These Settings (both strategies)',
     buyHoldLabel: (returnPercent) =>
       `Buy-and-hold return over the same period: ${returnPercent}% ／ Use this to judge whether active management actually beat just holding`,
     strategyTypeGrid: 'Grid',

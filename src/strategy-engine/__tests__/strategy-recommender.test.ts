@@ -22,7 +22,23 @@ describe('recommendStrategyParams', () => {
     expect(recommendStrategyParams(syntheticHistory(30))).toEqual({
       buyHoldReturnPercent: 0,
       recommendations: [],
+      bestGrid: null,
+      bestPyramid: null,
     });
+  });
+
+  test('回傳兩種策略各自報酬率最高的一組，供「套用建議」同時啟用雙策略', () => {
+    const { bestGrid, bestPyramid, recommendations } =
+      recommendStrategyParams(syntheticHistory(300));
+    expect(bestGrid?.strategyType).toBe('grid');
+    expect(bestPyramid?.strategyType).toBe('pyramid');
+    // 各自都是同類型組合中報酬率最高的（不會輸給榜單上任何同類型組合）
+    for (const item of recommendations) {
+      const best = item.strategyType === 'grid' ? bestGrid : bestPyramid;
+      expect(best!.result.totalReturnPercent).toBeGreaterThanOrEqual(
+        item.result.totalReturnPercent,
+      );
+    }
   });
 
   test('資料足夠時，網格3×3×2=18組合＋金字塔2×3=6組合混合排序，回傳前 5 名', () => {

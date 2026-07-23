@@ -4,80 +4,71 @@ import { getCurrentPrices, mergeLivePriceIntoHistory } from '../data-fetch/curre
 import { getPriceHistory } from '../db/price-history-repo';
 import { getPyramidState, savePyramidState } from '../db/pyramid-state-repo';
 import { getEnabledStrategyConfigs, getWatchlist } from '../db/watchlist-repo';
-import { adviseEntry, type EntryAdvice } from '../strategy-engine/entry-advisor';
-import { evaluateStrategy } from '../strategy-engine/engine';
+import type { PyramidConfig } from '../strategy-engine/pyramid-state-machine';
 import {
-  evaluatePyramid,
-  type PyramidConfig,
-  type PyramidSignal,
-} from '../strategy-engine/pyramid-state-machine';
-import type { PricePoint, StrategySignal } from '../strategy-engine/types';
+  routeRecommendation,
+  type RoutedRecommendation,
+} from '../strategy-engine/recommendation-router';
+import type { PricePoint } from '../strategy-engine/types';
 import { notifyIfNew } from './local-notification';
 
 /**
- * 金字塔加碼是有狀態策略，訊號的意義（加碼/出場）跟網格/RSI/均線交叉的「進場建議」
- * 本質不同（EntryAdvice 只有 enter/wait/no_signal，沒有「出場」的概念），硬塞進同一個
- * signal/advice 形狀只會產生誤導性的資料，改用 discriminated union 分開表示。
+ * 每檔股票一筆檢查結果。策略層面「聽網格還是聽金字塔」已經由 routeRecommendation
+ * 在這裡收斂成單一建議，呼叫端（清單頁的立即檢查、背景任務）只需要知道每檔股票
+ * 最後的建議與是否發了通知，不用再理解個別策略的訊號形狀。
  */
-export type CheckResultItem =
-  | {
-      stockCode: string;
-      stockName: string;
-      strategyConfigId: number;
-      strategyType: 'grid' | 'rsi' | 'ma_cross';
-      signal: StrategySignal;
-      advice: EntryAdvice;
-      notified: boolean;
-      notifyError?: string;
-    }
-  | {
-      stockCode: string;
-      stockName: string;
-      strategyConfigId: number;
-      strategyType: 'pyramid';
-      pyramidSignal: PyramidSignal;
-      notified: boolean;
-      notifyError?: string;
-    };
+export interface CheckResultItem {
+  stockCode: string;
+  stockName: string;
+  /** 這次建議來源策略的 strategy_config id；沒有啟用任何策略時為 null */
+  strategyConfigId: number | null;
+  /** 路由後的單一建議；沒有啟用任何策略時為 null */
+  recommendation: RoutedRecommendation | null;
+  notified: boolean;
+  notifyError?: string;
+}
 
-const ENTRY_ACTION_EMOJI: Record<'enter' | 'wait', string> = {
+const ACTION_EMOJI: Record<string, string> = {
   enter: '🟢',
+  add: '🟢',
+  exit: '🔴',
   wait: '🟡',
 };
 
-const PYRAMID_ACTION_EMOJI: Record<'add' | 'exit', string> = {
-  add: '🟢',
-  exit: '🔴',
-};
-
-function buildSignalKey(strategyType: string, advice: EntryAdvice, history: PricePoint[]): string {
+function buildSignalKey(rec: RoutedRecommendation, history: PricePoint[]): string {
   const latestDate = history.length > 0 ? history[history.length - 1].date : 'no-data';
-  const tierPart = advice.tierIndex !== undefined ? `:tier${advice.tierIndex}` : '';
-  return `${strategyType}:${advice.action}${tierPart}:${latestDate}`;
-}
-
-function buildPyramidSignalKey(signal: PyramidSignal, history: PricePoint[]): string {
-  const latestDate = history.length > 0 ? history[history.length - 1].date : 'no-data';
-  const tierPart = signal.tierIndex !== undefined ? `:tier${signal.tierIndex}` : '';
-  return `pyramid:${signal.action}${tierPart}:${latestDate}`;
+  const tierPart = rec.tierIndex !== undefined ? `:tier${rec.tierIndex}` : '';
+  return `${rec.source}:${rec.action}${tierPart}:${latestDate}`;
 }
 
 /**
- * 讀 watchlist -> 對每檔股票的每個啟用策略呼叫 entry-advisor.ts -> 策略觸發且經過
- * trend-classifier 笑臉/哭臉安全閥判斷後，只要不是「尚未觸發」就寫 notification_log
- * 並發本機通知。Phase 4 的背景任務會重用這個函式。
+ * 是否值得打擾使用者：enter/add/exit 是明確要採取行動的時刻；wait 只有在
+ * 「網格檔位已經觸發、只是趨勢還沒確認止穩」（tierIndex 有值）時通知——到價本身
+ * 是使用者關心的事件。純粹的觀望（下跌趨勢不進場）、凍結、續抱、無訊號都只是
+ * 狀態展示，每天通知只會變成噪音。
+ */
+function shouldNotify(rec: RoutedRecommendation): boolean {
+  if (rec.action === 'enter' || rec.action === 'add' || rec.action === 'exit') return true;
+  return rec.action === 'wait' && rec.tierIndex !== undefined;
+}
+
+/**
+ * 讀 watchlist -> 對每檔股票把啟用中的網格/金字塔設定交給 routeRecommendation 收斂成
+ * 單一建議 -> 值得行動的建議寫 notification_log 並發本機通知。Phase 4 的背景任務會
+ * 重用這個函式。
  *
- * action 為 wait（策略已觸發但趨勢還沒確認止穩反彈）也會推播，只是文案跟 enter
- * 不同——避免新加入、歷史資料還不足以判斷趨勢的股票在確認前完全收不到通知。
+ * 同一檔股票即使同時啟用網格與金字塔，也只會產生一則通知——跟個股詳情頁顯示的
+ * 「今天該做的事」是同一套路由邏輯，通知說買、畫面說凍結這種矛盾不會發生。
  *
  * 策略判斷依 price_history 併入盤中最新報價後的結果，不能只看 price_history 最新一筆
  * （可能是前一交易日，或今天背景同步還沒跑過），否則觸發通知會晚於價格實際到價的時間。
  *
- * 金字塔加碼（pyramid）不走 evaluateStrategy/adviseEntry——它是有狀態策略，每次都要讀
- * 上一次存的 PyramidState 當 prevState 傳入 evaluatePyramid，算完新狀態要存回去，
- * 不管這次有沒有觸發訊號都要存（不存的話下次又會從初始狀態重算，等於狀態機失去意義）。
- * 只有 action 為 add（加碼）或 exit（出場）才是使用者要採取行動的時刻，才發通知；
- * freeze/hold/insufficient_data 純粹是狀態展示，不用打擾使用者。
+ * 金字塔加碼是有狀態策略：routeRecommendation 內部評估後把推進的新狀態放在
+ * pyramidNextState 回傳，這裡負責存回 pyramid_state——不管這次有沒有觸發訊號都要存，
+ * 不存的話下次又會從初始狀態重算，狀態機就失去意義。
+ *
+ * 舊版曾允許 rsi/ma_cross 當獨立策略，這類設定列可能仍留在 DB 裡；它們的角色已經
+ * 內化成進場確認濾網（momentum-confirm.ts），這裡直接忽略，不再各自評估與通知。
  */
 export async function checkWatchlistAndNotify(db: SQLiteDatabase): Promise<CheckResultItem[]> {
   const watchlist = await getWatchlist(db);
@@ -89,84 +80,65 @@ export async function checkWatchlistAndNotify(db: SQLiteDatabase): Promise<Check
 
   for (const item of watchlist) {
     const configs = await getEnabledStrategyConfigs(db, item.id);
-    const history = await getPriceHistory(db, item.stockCode);
-    const adviceHistory = mergeLivePriceIntoHistory(history, currentPrices[item.stockCode] ?? null);
+    const gridConfig = configs.find((config) => config.type === 'grid') ?? null;
+    const pyramidConfig = configs.find((config) => config.type === 'pyramid') ?? null;
 
-    for (const config of configs) {
-      if (config.type === 'pyramid') {
-        const pyramidConfig = config.params as PyramidConfig;
-        const prevState = await getPyramidState(db, config.id);
-        const { signal: pyramidSignal, nextState } = evaluatePyramid(
-          adviceHistory,
-          pyramidConfig,
-          prevState ?? undefined,
-        );
-        await savePyramidState(db, config.id, nextState);
-
-        let notified = false;
-        let notifyError: string | undefined;
-        if (pyramidSignal.action === 'add' || pyramidSignal.action === 'exit') {
-          const signalKey = buildPyramidSignalKey(pyramidSignal, adviceHistory);
-          try {
-            notified = await notifyIfNew(db, {
-              watchlistId: item.id,
-              strategyConfigId: config.id,
-              signalKey,
-              title: `${PYRAMID_ACTION_EMOJI[pyramidSignal.action]} ${item.stockCode} ${item.stockName}`,
-              body: pyramidSignal.reason,
-            });
-          } catch (err) {
-            notifyError = err instanceof Error ? err.message : String(err);
-          }
-        }
-
-        results.push({
-          stockCode: item.stockCode,
-          stockName: item.stockName,
-          strategyConfigId: config.id,
-          strategyType: 'pyramid',
-          pyramidSignal,
-          notified,
-          ...(notifyError !== undefined ? { notifyError } : {}),
-        });
-        continue;
-      }
-
-      const strategyConfig = { type: config.type, params: config.params };
-      const signal = evaluateStrategy(adviceHistory, strategyConfig);
-      const advice = adviseEntry(adviceHistory, strategyConfig, {
-        momentumConfirmEnabled: item.entryConfirmEnabled,
-      });
-
-      let notified = false;
-      let notifyError: string | undefined;
-      if (advice.action !== 'no_signal') {
-        const signalKey = buildSignalKey(config.type, advice, adviceHistory);
-        try {
-          notified = await notifyIfNew(db, {
-            watchlistId: item.id,
-            strategyConfigId: config.id,
-            signalKey,
-            title: `${ENTRY_ACTION_EMOJI[advice.action]} ${item.stockCode} ${item.stockName}`,
-            body: advice.reason,
-          });
-        } catch (err) {
-          // 單一訊號發送失敗（例如系統通知一時失敗）不該讓其他股票/策略的檢查也被中斷
-          notifyError = err instanceof Error ? err.message : String(err);
-        }
-      }
-
+    if (!gridConfig && !pyramidConfig) {
       results.push({
         stockCode: item.stockCode,
         stockName: item.stockName,
-        strategyConfigId: config.id,
-        strategyType: config.type,
-        signal,
-        advice,
-        notified,
-        ...(notifyError !== undefined ? { notifyError } : {}),
+        strategyConfigId: null,
+        recommendation: null,
+        notified: false,
       });
+      continue;
     }
+
+    const history = await getPriceHistory(db, item.stockCode);
+    const adviceHistory = mergeLivePriceIntoHistory(history, currentPrices[item.stockCode] ?? null);
+
+    const prevState = pyramidConfig ? await getPyramidState(db, pyramidConfig.id) : null;
+    const recommendation = routeRecommendation(
+      adviceHistory,
+      gridConfig ? { type: 'grid', params: gridConfig.params } : null,
+      pyramidConfig ? (pyramidConfig.params as PyramidConfig) : null,
+      prevState ?? undefined,
+      { momentumConfirmEnabled: item.entryConfirmEnabled },
+    )!;
+
+    if (pyramidConfig && recommendation.pyramidNextState) {
+      await savePyramidState(db, pyramidConfig.id, recommendation.pyramidNextState);
+    }
+
+    const sourceConfigId =
+      recommendation.source === 'grid' ? gridConfig!.id : pyramidConfig!.id;
+
+    let notified = false;
+    let notifyError: string | undefined;
+    if (shouldNotify(recommendation)) {
+      const signalKey = buildSignalKey(recommendation, adviceHistory);
+      try {
+        notified = await notifyIfNew(db, {
+          watchlistId: item.id,
+          strategyConfigId: sourceConfigId,
+          signalKey,
+          title: `${ACTION_EMOJI[recommendation.action] ?? '🟡'} ${item.stockCode} ${item.stockName}`,
+          body: recommendation.reason,
+        });
+      } catch (err) {
+        // 單一訊號發送失敗（例如系統通知一時失敗）不該讓其他股票的檢查也被中斷
+        notifyError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    results.push({
+      stockCode: item.stockCode,
+      stockName: item.stockName,
+      strategyConfigId: sourceConfigId,
+      recommendation,
+      notified,
+      ...(notifyError !== undefined ? { notifyError } : {}),
+    });
   }
 
   return results;

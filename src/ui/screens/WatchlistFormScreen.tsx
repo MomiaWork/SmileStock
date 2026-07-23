@@ -45,19 +45,24 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
   const { strings } = useI18n();
   const watchlistId = route.params?.watchlistId;
   const isEditing = watchlistId !== undefined;
-  // 從「策略建議」畫面帶參數過來時預填——只在新增（非編輯）情境套用，
-  // 錨定價留給使用者自己填當下價格，不從建議帶入（建議是用回測區間第一天的價格算的，
-  // 跟使用者現在要新增股票的當下價格無關，會用即時報價另外自動帶入）
+  // 從「策略建議」畫面帶參數過來時預填——只在新增（非編輯）情境套用。
+  // 錨定價/進場價不從建議帶入（建議是用回測區間的歷史價格算的，跟使用者現在
+  // 新增股票的當下價格無關），由下方的自動帶入 effect 用即時報價填。
   const prefill = isEditing ? undefined : route.params?.prefill;
-  const gridPrefill = prefill?.strategyType === 'grid' ? prefill : undefined;
-  const pyramidPrefill = prefill?.strategyType === 'pyramid' ? prefill : undefined;
+  const gridPrefill = prefill?.grid;
+  const pyramidPrefill = prefill?.pyramid;
 
   const [stockCode, setStockCode] = useState(prefill?.stockCode ?? '');
   const [stockName, setStockName] = useState(prefill?.stockName ?? '');
   const [budget, setBudget] = useState('100000');
   const [intervalSec, setIntervalSec] = useState(String(DEFAULT_GLOBAL_INTERVAL_SEC));
 
-  const [gridEnabled, setGridEnabled] = useState(gridPrefill !== undefined);
+  // 新增時網格與金字塔預設都啟用：事先無法知道未來走勢是盤整還是趨勢，兩策略同時
+  // 待命、由市場狀態路由（recommendation-router）決定當天聽誰的，才不會把「預測走勢」
+  // 這個難題丟回給使用者。帶著預填參數進來時，只啟用預填有涵蓋的策略。
+  const [gridEnabled, setGridEnabled] = useState(
+    !isEditing && (prefill ? gridPrefill !== undefined : true),
+  );
   const [gridAnchorPrice, setGridAnchorPrice] = useState('');
   const [gridSpacingPercent, setGridSpacingPercent] = useState(
     gridPrefill ? String(gridPrefill.spacingPercent) : '5',
@@ -70,7 +75,9 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
     gridPrefill?.entryConfirmEnabled ?? false,
   );
 
-  const [pyramidEnabled, setPyramidEnabled] = useState(pyramidPrefill !== undefined);
+  const [pyramidEnabled, setPyramidEnabled] = useState(
+    !isEditing && (prefill ? pyramidPrefill !== undefined : true),
+  );
   const [pyramidEntryPrice, setPyramidEntryPrice] = useState('');
   const [pyramidWeightsProfile, setPyramidWeightsProfile] = useState<PyramidWeightsProfile>(
     pyramidPrefill?.weightsProfile ?? 'equal',
@@ -192,22 +199,40 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
     }
   };
 
+  // 使用者輸入標的代碼後自動帶入：名稱、網格錨定價、金字塔進場價（只填還空著的欄位，
+  // 不蓋掉使用者手動改過的值）。目標是把新增流程壓到「輸入代碼＋確認預算」就能存——
+  // 名稱與當下價格本來就查得到，不該要使用者自己填。查詢失敗保持安靜（欄位留空，
+  // 儲存時驗證仍會擋），避免打字過程一直跳錯誤視窗。
+  const lastAutofillCode = useRef<string | null>(null);
   useEffect(() => {
-    if (isEditing || stockCode.trim() === '') return;
+    if (isEditing) return;
     const code = stockCode.trim();
-    // setTimeout 讓 setState 不在 effect 這次同步執行內觸發，避免 cascading render
+    if (code === '' || code === lastAutofillCode.current) return;
     const handle = setTimeout(() => {
-      if (gridEnabled && gridAnchorPrice.trim() === '') {
-        void fetchCurrentPriceInto(code, setGridAnchorPrice);
-      }
-      if (pyramidEnabled && pyramidEntryPrice.trim() === '') {
-        void fetchCurrentPriceInto(code, setPyramidEntryPrice);
-      }
-    }, 0);
+      void (async () => {
+        try {
+          setFetchingCurrentPrice(true);
+          const [quote] = await fetchRealtimeQuotes([code]);
+          if (!quote) return;
+          lastAutofillCode.current = code;
+          if (quote.name) {
+            setStockName((prev) => (prev.trim() === '' ? quote.name : prev));
+          }
+          const price = quote.lastPrice ?? quote.previousClose;
+          if (price !== undefined && price !== null) {
+            const priceText = String(price);
+            setGridAnchorPrice((prev) => (prev.trim() === '' ? priceText : prev));
+            setPyramidEntryPrice((prev) => (prev.trim() === '' ? priceText : prev));
+          }
+        } catch {
+          // 自動帶入失敗不打擾使用者，欄位留給使用者手動輸入
+        } finally {
+          setFetchingCurrentPrice(false);
+        }
+      })();
+    }, 600);
     return () => clearTimeout(handle);
-    // 只在表單掛載、從「策略建議」帶入已啟用策略時觸發一次，之後改由 handle*EnabledChange 接手
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isEditing, stockCode]);
 
   const handleSave = async (): Promise<void> => {
     const budgetNum = Number(budget);

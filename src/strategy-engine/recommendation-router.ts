@@ -21,6 +21,12 @@ export interface RoutedRecommendation {
   tierIndex?: number;
   stopPrice?: number;
   reason: string;
+  /**
+   * 金字塔策略有啟用時，這次評估推進後的新狀態。呼叫端（run-check）要負責存回
+   * pyramid_state，不存的話狀態機每次都從初始狀態重算；純顯示用途（個股詳情頁）
+   * 可以忽略這個欄位。
+   */
+  pyramidNextState?: PyramidState;
 }
 
 /**
@@ -76,12 +82,14 @@ export function routeRecommendation(
       tierIndex: s.tierIndex,
       stopPrice: s.stopPrice,
       reason: s.reason,
+      pyramidNextState: pyramidResult.nextState,
     };
   }
 
   // 以下兩者都有值（TypeScript 無法從上面的 early return 推導，用非空斷言收斂型別）
   const advice = gridAdvice!;
   const pSignal = pyramidResult!.signal;
+  const pyramidNextState = pyramidResult!.nextState;
 
   if (pSignal.action === 'exit') {
     return {
@@ -90,6 +98,7 @@ export function routeRecommendation(
       action: 'exit',
       stopPrice: pSignal.stopPrice,
       reason: `【優先出場】${pSignal.reason}`,
+      pyramidNextState,
     };
   }
 
@@ -101,6 +110,7 @@ export function routeRecommendation(
       amount: advice.amount,
       tierIndex: advice.tierIndex,
       reason: `趨勢研判資料還在累積中（${pSignal.reason}），暫時依微笑曲線網格判斷：${advice.reason}`,
+      pyramidNextState,
     };
   }
 
@@ -113,6 +123,7 @@ export function routeRecommendation(
         amount: advice.amount,
         tierIndex: advice.tierIndex,
         reason: `目前研判為${MARKET_STATE_LABEL.CONSOLIDATION}，依微笑曲線網格判斷：${advice.reason}`,
+        pyramidNextState,
       };
 
     case 'TRENDING_UP':
@@ -125,6 +136,7 @@ export function routeRecommendation(
         tierIndex: pSignal.tierIndex,
         stopPrice: pSignal.stopPrice,
         reason: `目前研判為${MARKET_STATE_LABEL[pSignal.state]}，依金字塔加碼判斷：${pSignal.reason}`,
+        pyramidNextState,
       };
 
     // 兩策略都不建議投入新資金，但金字塔的棘輪停損仍持續追蹤既有部位
@@ -136,6 +148,7 @@ export function routeRecommendation(
         action: 'wait',
         stopPrice: pSignal.stopPrice,
         reason: `目前研判為${MARKET_STATE_LABEL[pSignal.state]}，網格與金字塔都不建議投入新資金，請等待止穩訊號；既有部位的停損維持在 ${pSignal.stopPrice.toFixed(2)}`,
+        pyramidNextState,
       };
 
     default: {

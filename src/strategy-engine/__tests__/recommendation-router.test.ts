@@ -129,4 +129,22 @@ describe('routeRecommendation', () => {
     expect(result?.regime).toBeNull();
     expect(result?.reason).toContain('趨勢研判資料還在累積中');
   });
+
+  it('金字塔有啟用時（不論路由結果聽誰的）一律回傳推進後的 pyramidNextState 供呼叫端持久化', () => {
+    // 路由到網格（盤整）時金字塔狀態仍要推進，否則狀態機會停在舊狀態
+    const routedToGrid = routeRecommendation(
+      bars(flatCloses),
+      gridConfig,
+      basePyramidConfig,
+      undefined,
+    );
+    expect(routedToGrid?.source).toBe('grid');
+    expect(routedToGrid?.pyramidNextState).toBeDefined();
+
+    const pyramidOnly = routeRecommendation(bars(flatCloses), null, basePyramidConfig, undefined);
+    expect(pyramidOnly?.pyramidNextState).toBeDefined();
+
+    const gridOnly = routeRecommendation(bars(flatCloses), gridConfig, null, undefined);
+    expect(gridOnly?.pyramidNextState).toBeUndefined();
+  });
 });

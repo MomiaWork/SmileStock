@@ -19,11 +19,7 @@ import {
 } from '../../db/watchlist-repo';
 import { useI18n } from '../../i18n';
 import { adviseEntry, type EntryAdvice } from '../../strategy-engine/entry-advisor';
-import {
-  evaluateStrategy,
-  routeRecommendation,
-  type RoutedRecommendation,
-} from '../../strategy-engine/engine';
+import { routeRecommendation, type RoutedRecommendation } from '../../strategy-engine/engine';
 import { adviseExit, type ExitAdvice } from '../../strategy-engine/exit-advisor';
 import type { Position } from '../../strategy-engine/pnl';
 import {
@@ -32,7 +28,7 @@ import {
   type PyramidSignal,
 } from '../../strategy-engine/pyramid-state-machine';
 import { classifyTrend, type TrendClassification } from '../../strategy-engine/trend-classifier';
-import type { PricePoint, StrategySignal } from '../../strategy-engine/types';
+import type { PricePoint } from '../../strategy-engine/types';
 import PriceLineChart from '../components/PriceLineChart';
 import PrimaryButton from '../components/PrimaryButton';
 import { InputRow } from '../components/Row';
@@ -41,11 +37,6 @@ import type { RootStackParamList } from '../navigation/types';
 import { colors, radius, spacing, typography } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'StockDetail'>;
-
-interface StrategyStatus {
-  type: string;
-  signal: StrategySignal;
-}
 
 function StatusRow({ title, subtitle }: { title: string; subtitle: string }): React.JSX.Element {
   return (
@@ -61,14 +52,13 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   const { watchlistId } = route.params;
   const [item, setItem] = useState<WatchlistItem | null>(null);
   const [history, setHistory] = useState<PricePoint[]>([]);
-  const [statuses, setStatuses] = useState<StrategyStatus[]>([]);
-  const [pyramidStatuses, setPyramidStatuses] = useState<PyramidSignal[]>([]);
+  const [gridAdvice, setGridAdvice] = useState<EntryAdvice | null>(null);
+  const [pyramidStatus, setPyramidStatus] = useState<PyramidSignal | null>(null);
   const [routedRecommendation, setRoutedRecommendation] = useState<RoutedRecommendation | null>(
     null,
   );
   const [notifications, setNotifications] = useState<NotificationHistoryEntry[]>([]);
   const [trend, setTrend] = useState<TrendClassification | null>(null);
-  const [entryAdvices, setEntryAdvices] = useState<{ type: string; advice: EntryAdvice }[]>([]);
   const [position, setPosition] = useState<Position | null>(null);
   const [exitAdvice, setExitAdvice] = useState<ExitAdvice | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -98,63 +88,48 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
     setHistory(adviceHistory);
 
     const configs = await getEnabledStrategyConfigs(db, watchlistId);
-    // 金字塔加碼是有狀態策略，不走 evaluateStrategy/adviseEntry（那套是網格/RSI/均線交叉
-    // 共用的無狀態進場建議管線），另外用自己的區塊顯示狀態
-    const nonPyramidConfigs = configs.filter(
-      (config): config is typeof config & { type: Exclude<typeof config.type, 'pyramid'> } =>
-        config.type !== 'pyramid',
-    );
-    const pyramidConfigs = configs.filter((config) => config.type === 'pyramid');
-
-    setStatuses(
-      nonPyramidConfigs.map((config) => ({
-        type: config.type,
-        signal: evaluateStrategy(adviceHistory, { type: config.type, params: config.params }),
-      })),
-    );
+    // 舊版曾允許 rsi/ma_cross 當獨立策略，這類設定列可能仍留在 DB；它們已內化成
+    // 進場確認濾網（momentum-confirm.ts），畫面上不再各自顯示技術指標狀態
+    const gridConfigEntry = configs.find((config) => config.type === 'grid') ?? null;
+    const pyramidConfigEntry = configs.find((config) => config.type === 'pyramid') ?? null;
 
     setTrend(classifyTrend(adviceHistory));
 
-    setEntryAdvices(
-      nonPyramidConfigs.map((config) => ({
-        type: config.type,
-        advice: adviseEntry(
-          adviceHistory,
-          { type: config.type, params: config.params },
-          { momentumConfirmEnabled: watchlistItem.entryConfirmEnabled },
-        ),
-      })),
+    setGridAdvice(
+      gridConfigEntry
+        ? adviseEntry(
+            adviceHistory,
+            { type: 'grid', params: gridConfigEntry.params },
+            { momentumConfirmEnabled: watchlistItem.entryConfirmEnabled },
+          )
+        : null,
     );
 
     // 唯讀試算目前訊號給畫面顯示用，不在這裡改寫 pyramid_state——狀態的實際推進由
     // 「立即檢查」/背景任務（run-check.ts）負責，這裡只是讀最後一次存的狀態算出目前是什麼樣子
-    const pyramidPrevStates = await Promise.all(
-      pyramidConfigs.map((config) => getPyramidState(db, config.id)),
-    );
-    setPyramidStatuses(
-      pyramidConfigs.map((config, i) => {
-        const { signal } = evaluatePyramid(
-          adviceHistory,
-          config.params as PyramidConfig,
-          pyramidPrevStates[i] ?? undefined,
-        );
-        return signal;
-      }),
+    const pyramidPrevState = pyramidConfigEntry
+      ? await getPyramidState(db, pyramidConfigEntry.id)
+      : null;
+    setPyramidStatus(
+      pyramidConfigEntry
+        ? evaluatePyramid(
+            adviceHistory,
+            pyramidConfigEntry.params as PyramidConfig,
+            pyramidPrevState ?? undefined,
+          ).signal
+        : null,
     );
 
-    // 網格（微笑曲線）與金字塔加碼同時啟用時，未來走勢究竟會是盤整、上升趨勢還是下降趨勢
-    // 事先無法確定，讓兩策略同時運作、依當天走勢由 routeRecommendation 判斷市場狀態，
-    // 只顯示單一明確的「今天該做的事」，避免兩策略同時給出矛盾建議或重複動用預算；
-    // 只開其中一個策略時維持原本各自獨立顯示，不套用路由
-    const gridConfigEntry = nonPyramidConfigs.find((config) => config.type === 'grid') ?? null;
-    const pyramidConfigEntry = pyramidConfigs[0] ?? null;
+    // 「今天該做的事」是這一頁的主角：只要有啟用任一策略就走 routeRecommendation，
+    // 由市場狀態收斂成單一行動指示（兩策略同開時避免矛盾建議與重複動用預算；
+    // 只開一個時透傳該策略自己的建議），跟「立即檢查」的通知邏輯是同一套判斷
     setRoutedRecommendation(
-      gridConfigEntry && pyramidConfigEntry
+      gridConfigEntry || pyramidConfigEntry
         ? routeRecommendation(
             adviceHistory,
-            { type: 'grid', params: gridConfigEntry.params },
-            pyramidConfigEntry.params as PyramidConfig,
-            pyramidPrevStates[0] ?? undefined,
+            gridConfigEntry ? { type: 'grid', params: gridConfigEntry.params } : null,
+            pyramidConfigEntry ? (pyramidConfigEntry.params as PyramidConfig) : null,
+            pyramidPrevState ?? undefined,
             { momentumConfirmEnabled: watchlistItem.entryConfirmEnabled },
           )
         : null,
@@ -236,6 +211,24 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Section title={strings.stockDetail.sectionTodayAction}>
+        {routedRecommendation ? (
+          <StatusRow
+            title={strings.stockDetail.todayActionTitle(
+              strings.stockDetail.todayActionLabel[routedRecommendation.action],
+              routedRecommendation.tierIndex,
+              routedRecommendation.amount,
+            )}
+            subtitle={routedRecommendation.reason}
+          />
+        ) : (
+          <StatusRow
+            title={strings.stockDetail.noStrategyTitle}
+            subtitle={strings.stockDetail.noStrategySubtitle}
+          />
+        )}
+      </Section>
+
       <Section title={strings.stockDetail.sectionChart}>
         <View style={styles.chartCard}>
           <PriceLineChart history={history} />
@@ -248,67 +241,23 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
         </Section>
       )}
 
-      {routedRecommendation && (
-        <Section title={strings.stockDetail.sectionTodayAction}>
-          <StatusRow
-            title={strings.stockDetail.todayActionTitle(
-              strings.stockDetail.todayActionLabel[routedRecommendation.action],
-              routedRecommendation.tierIndex,
-              routedRecommendation.amount,
-            )}
-            subtitle={routedRecommendation.reason}
-          />
-        </Section>
-      )}
-
-      {entryAdvices.filter(({ type }) => !routedRecommendation || type !== 'grid').length > 0 && (
-        <Section title={strings.stockDetail.sectionEntryAdvice}>
-          {entryAdvices
-            .filter(({ type }) => !routedRecommendation || type !== 'grid')
-            .map(({ type, advice }) => (
-              <StatusRow
-                key={type}
-                title={`[${type}] ${strings.stockDetail.entryAction[advice.action]}`}
-                subtitle={advice.reason}
-              />
-            ))}
-        </Section>
-      )}
-
-      {(statuses.filter((s) => !routedRecommendation || s.type !== 'grid').length > 0 ||
-        pyramidStatuses.length === 0) && (
+      {(gridAdvice || pyramidStatus) && (
         <Section title={strings.stockDetail.sectionStrategyStatus}>
-          {statuses.filter((s) => !routedRecommendation || s.type !== 'grid').length === 0 ? (
+          {gridAdvice && (
             <StatusRow
-              title={strings.stockDetail.noStrategyTitle}
-              subtitle={strings.stockDetail.noStrategySubtitle}
+              title={`${strings.stockDetail.strategyNameGrid}｜${strings.stockDetail.entryAction[gridAdvice.action]}`}
+              subtitle={gridAdvice.reason}
             />
-          ) : (
-            statuses
-              .filter((s) => !routedRecommendation || s.type !== 'grid')
-              .map((s, i) => (
-                <StatusRow
-                  key={i}
-                  title={`[${s.type}] ${s.signal.triggered ? strings.stockDetail.triggered : strings.stockDetail.notTriggered}`}
-                  subtitle={s.signal.reason}
-                />
-              ))
           )}
-        </Section>
-      )}
-
-      {!routedRecommendation && pyramidStatuses.length > 0 && (
-        <Section title={strings.stockDetail.sectionPyramidStatus}>
-          {pyramidStatuses.map((signal, i) => (
+          {pyramidStatus && (
             <StatusRow
-              key={i}
-              title={strings.stockDetail.pyramidStateLabel(
-                strings.stockDetail.pyramidMarketState[signal.state],
-                signal.tierIndex,
-              )}
-              subtitle={signal.reason}
+              title={`${strings.stockDetail.strategyNamePyramid}｜${strings.stockDetail.pyramidStateLabel(
+                strings.stockDetail.pyramidMarketState[pyramidStatus.state],
+                pyramidStatus.tierIndex,
+              )}`}
+              subtitle={pyramidStatus.reason}
             />
-          ))}
+          )}
         </Section>
       )}
 
@@ -425,8 +374,14 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
           notifications.map((n) => (
             <StatusRow
               key={n.id}
-              title={`[${n.strategyType}] ${n.signalKey}`}
-              subtitle={n.sentAt}
+              title={
+                n.strategyType === 'grid'
+                  ? strings.stockDetail.strategyNameGrid
+                  : n.strategyType === 'pyramid'
+                    ? strings.stockDetail.strategyNamePyramid
+                    : n.strategyType
+              }
+              subtitle={`${n.sentAt}　${n.signalKey}`}
             />
           ))
         )}

@@ -19,6 +19,10 @@ export interface RecommendationResult {
    * 代表這段期間主動操作不見得比單純持有划算，讓使用者自己判斷 */
   buyHoldReturnPercent: number;
   recommendations: RankedRecommendation[];
+  /** 全部組合中報酬率最高的網格參數。兩策略預設會一起啟用（由市場狀態路由決定當天聽誰的），
+   * 所以「套用建議」需要的是各策略最佳的一組，不是混合排行的第一名 */
+  bestGrid: Extract<RankedRecommendation, { strategyType: 'grid' }> | null;
+  bestPyramid: Extract<RankedRecommendation, { strategyType: 'pyramid' }> | null;
 }
 
 const RISK_LOW_MAX_DRAWDOWN = 8;
@@ -100,34 +104,46 @@ function buildPyramidParamCombinations(): PyramidBacktestParams[] {
  */
 export function recommendStrategyParams(history: PricePoint[]): RecommendationResult {
   if (history.length < MIN_REQUIRED_TRADING_DAYS) {
-    return { buyHoldReturnPercent: 0, recommendations: [] };
+    return { buyHoldReturnPercent: 0, recommendations: [], bestGrid: null, bestPyramid: null };
   }
 
-  const gridResults: RankedRecommendation[] = buildGridParamCombinations().map((params) => {
-    const result = runGridBacktest(history, params, REFERENCE_BUDGET);
-    return {
-      strategyType: 'grid',
-      params,
-      result,
-      riskLevel: classifyRisk(result.maxDrawdownPercent),
-    };
-  });
-  const pyramidResults: RankedRecommendation[] = buildPyramidParamCombinations().map((params) => {
-    const result = runPyramidBacktest(history, params, REFERENCE_BUDGET);
-    return {
-      strategyType: 'pyramid',
-      params,
-      result,
-      riskLevel: classifyRisk(result.maxDrawdownPercent),
-    };
-  });
+  const byReturnDesc = (a: RankedRecommendation, b: RankedRecommendation): number =>
+    b.result.totalReturnPercent - a.result.totalReturnPercent;
 
-  const results = [...gridResults, ...pyramidResults];
-  results.sort((a, b) => b.result.totalReturnPercent - a.result.totalReturnPercent);
+  const gridResults = buildGridParamCombinations()
+    .map((params): Extract<RankedRecommendation, { strategyType: 'grid' }> => {
+      const result = runGridBacktest(history, params, REFERENCE_BUDGET);
+      return {
+        strategyType: 'grid',
+        params,
+        result,
+        riskLevel: classifyRisk(result.maxDrawdownPercent),
+      };
+    })
+    .sort(byReturnDesc);
+  const pyramidResults = buildPyramidParamCombinations()
+    .map((params): Extract<RankedRecommendation, { strategyType: 'pyramid' }> => {
+      const result = runPyramidBacktest(history, params, REFERENCE_BUDGET);
+      return {
+        strategyType: 'pyramid',
+        params,
+        result,
+        riskLevel: classifyRisk(result.maxDrawdownPercent),
+      };
+    })
+    .sort(byReturnDesc);
+
+  const results: RankedRecommendation[] = [...gridResults, ...pyramidResults];
+  results.sort(byReturnDesc);
 
   const first = history[0].close;
   const last = history[history.length - 1].close;
   const buyHoldReturnPercent = ((last - first) / first) * 100;
 
-  return { buyHoldReturnPercent, recommendations: results.slice(0, TOP_N) };
+  return {
+    buyHoldReturnPercent,
+    recommendations: results.slice(0, TOP_N),
+    bestGrid: gridResults[0] ?? null,
+    bestPyramid: pyramidResults[0] ?? null,
+  };
 }

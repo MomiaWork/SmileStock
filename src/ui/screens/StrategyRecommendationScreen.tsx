@@ -6,7 +6,7 @@ import { fetchExtendedHistoricalQuotes, fetchRealtimeQuotes } from '../../data-f
 import { useI18n } from '../../i18n';
 import type {
   PyramidWeightsProfile,
-  RankedRecommendation,
+  RecommendationResult,
   RiskLevel,
 } from '../../strategy-engine/strategy-recommender';
 import {
@@ -39,8 +39,7 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
   };
   const [stockCode, setStockCode] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
-  const [results, setResults] = useState<RankedRecommendation[] | null>(null);
-  const [buyHoldReturnPercent, setBuyHoldReturnPercent] = useState(0);
+  const [analysis, setAnalysis] = useState<RecommendationResult | null>(null);
   const [analyzedCode, setAnalyzedCode] = useState('');
   const [analyzedName, setAnalyzedName] = useState('');
 
@@ -52,7 +51,7 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
     }
 
     setAnalyzing(true);
-    setResults(null);
+    setAnalysis(null);
     try {
       const quotes = await fetchExtendedHistoricalQuotes(code, BACKTEST_MONTHS);
       const history: PricePoint[] = quotes.map((q) => ({
@@ -62,8 +61,8 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
         low: q.lowestPrice,
         volume: q.tradeVolume,
       }));
-      const { buyHoldReturnPercent: buyHold, recommendations } = recommendStrategyParams(history);
-      if (recommendations.length === 0) {
+      const result = recommendStrategyParams(history);
+      if (result.recommendations.length === 0) {
         Alert.alert(
           strings.strategyRecommendation.insufficientDataTitle,
           strings.strategyRecommendation.insufficientDataMessage(code, BACKTEST_MONTHS),
@@ -74,8 +73,7 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
       // 要拿到真正的中文名稱得另外查即時報價端點；查不到就留空，不要顯示代號充當名稱
       const [realtimeQuote] = await fetchRealtimeQuotes([code]).catch(() => []);
       setAnalyzedName(realtimeQuote?.name ?? '');
-      setBuyHoldReturnPercent(buyHold);
-      setResults(recommendations);
+      setAnalysis(result);
     } catch (err) {
       Alert.alert(
         strings.strategyRecommendation.analyzeFailedTitle,
@@ -86,31 +84,29 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
     }
   };
 
-  const handleApplyGrid = (item: Extract<RankedRecommendation, { strategyType: 'grid' }>): void => {
-    navigation.navigate('WatchlistForm', {
-      prefill: {
-        strategyType: 'grid',
-        stockCode: analyzedCode,
-        stockName: analyzedName,
-        spacingPercent: item.params.spacingPercent,
-        tierCount: item.params.tierCount,
-        entryConfirmEnabled: item.params.momentumConfirmEnabled,
-      },
-    });
-  };
-
-  const handleApplyPyramid = (
-    item: Extract<RankedRecommendation, { strategyType: 'pyramid' }>,
-  ): void => {
+  /**
+   * 一鍵套用「最佳網格＋最佳金字塔」整組參數：兩個策略會一起啟用，每天由市場狀態
+   * 路由決定聽誰的，使用者不用自己預測未來是盤整還是趨勢、也不用二選一。
+   */
+  const handleApplyCombo = (): void => {
+    if (!analysis?.bestGrid || !analysis?.bestPyramid) return;
     const weightsProfile: PyramidWeightsProfile =
-      item.params.weights.join(',') === PYRAMID_WEIGHTS_OPTIONS[0].join(',') ? 'equal' : 'pyramid';
+      analysis.bestPyramid.params.weights.join(',') === PYRAMID_WEIGHTS_OPTIONS[0].join(',')
+        ? 'equal'
+        : 'pyramid';
     navigation.navigate('WatchlistForm', {
       prefill: {
-        strategyType: 'pyramid',
         stockCode: analyzedCode,
         stockName: analyzedName,
-        weightsProfile,
-        addTriggerPct: item.params.addTriggerPct,
+        grid: {
+          spacingPercent: analysis.bestGrid.params.spacingPercent,
+          tierCount: analysis.bestGrid.params.tierCount,
+          entryConfirmEnabled: analysis.bestGrid.params.momentumConfirmEnabled,
+        },
+        pyramid: {
+          weightsProfile,
+          addTriggerPct: analysis.bestPyramid.params.addTriggerPct,
+        },
       },
     });
   };
@@ -137,8 +133,78 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
         />
       </View>
 
-      {results !== null && (
+      {analysis !== null && (
         <>
+          {analysis.bestGrid && analysis.bestPyramid && (
+            <>
+              <Text style={styles.sectionTitle}>
+                {strings.strategyRecommendation.comboSectionTitle}
+              </Text>
+              <View style={styles.card}>
+                <View style={styles.cardBody}>
+                  <View style={styles.tagRow}>
+                    <Text style={styles.typeTagText}>
+                      {strings.strategyRecommendation.strategyTypeGrid}
+                    </Text>
+                    <Text style={[styles.riskTagText, riskTagStyles[analysis.bestGrid.riskLevel]]}>
+                      {strings.strategyRecommendation.riskLevelLabel(
+                        riskLevelText[analysis.bestGrid.riskLevel],
+                      )}
+                    </Text>
+                  </View>
+                  <Text style={styles.resultTitle}>
+                    {strings.strategyRecommendation.resultLine1(
+                      analysis.bestGrid.params.spacingPercent,
+                      analysis.bestGrid.params.tierCount,
+                      analysis.bestGrid.params.momentumConfirmEnabled
+                        ? strings.strategyRecommendation.filterOn
+                        : strings.strategyRecommendation.filterOff,
+                    )}
+                  </Text>
+                  <Text style={styles.resultMetrics}>
+                    {strings.strategyRecommendation.resultLine2(
+                      analysis.bestGrid.result.totalReturnPercent.toFixed(1),
+                      analysis.bestGrid.result.maxDrawdownPercent.toFixed(1),
+                      analysis.bestGrid.result.tradeCount,
+                    )}
+                  </Text>
+                  <View style={[styles.tagRow, styles.comboSecondTag]}>
+                    <Text style={styles.typeTagText}>
+                      {strings.strategyRecommendation.strategyTypePyramid}
+                    </Text>
+                    <Text
+                      style={[styles.riskTagText, riskTagStyles[analysis.bestPyramid.riskLevel]]}
+                    >
+                      {strings.strategyRecommendation.riskLevelLabel(
+                        riskLevelText[analysis.bestPyramid.riskLevel],
+                      )}
+                    </Text>
+                  </View>
+                  <Text style={styles.resultTitle}>
+                    {strings.strategyRecommendation.pyramidResultLine1(
+                      analysis.bestPyramid.params.weights.join(':'),
+                      analysis.bestPyramid.params.addTriggerPct,
+                    )}
+                  </Text>
+                  <Text style={styles.resultMetrics}>
+                    {strings.strategyRecommendation.resultLine2(
+                      analysis.bestPyramid.result.totalReturnPercent.toFixed(1),
+                      analysis.bestPyramid.result.maxDrawdownPercent.toFixed(1),
+                      analysis.bestPyramid.result.tradeCount,
+                    )}
+                  </Text>
+                  <PrimaryButton
+                    title={strings.strategyRecommendation.applyCombo}
+                    onPress={handleApplyCombo}
+                  />
+                </View>
+              </View>
+              <Text style={styles.disclaimerText}>
+                {strings.strategyRecommendation.comboFooter}
+              </Text>
+            </>
+          )}
+
           <Text style={styles.sectionTitle}>
             {strings.strategyRecommendation.resultsSectionTitle}
           </Text>
@@ -146,12 +212,14 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
             {strings.strategyRecommendation.disclaimer(analyzedCode || stockCode, BACKTEST_MONTHS)}
           </Text>
           <Text style={styles.benchmarkText}>
-            {strings.strategyRecommendation.buyHoldLabel(buyHoldReturnPercent.toFixed(1))}
+            {strings.strategyRecommendation.buyHoldLabel(
+              analysis.buyHoldReturnPercent.toFixed(1),
+            )}
           </Text>
-          {results.length === 0 && (
+          {analysis.recommendations.length === 0 && (
             <Text style={styles.emptyText}>{strings.strategyRecommendation.noResults}</Text>
           )}
-          {results.map((item, index) => (
+          {analysis.recommendations.map((item, index) => (
             <View key={index} style={styles.card}>
               <View style={styles.rankBadge}>
                 <Text style={styles.rankBadgeText}>{index + 1}</Text>
@@ -192,12 +260,6 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
                     item.result.tradeCount,
                   )}
                 </Text>
-                <PrimaryButton
-                  title={strings.strategyRecommendation.apply}
-                  onPress={() =>
-                    item.strategyType === 'grid' ? handleApplyGrid(item) : handleApplyPyramid(item)
-                  }
-                />
               </View>
             </View>
           ))}
@@ -244,6 +306,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  comboSecondTag: {
+    marginTop: spacing.sm,
   },
   typeTagText: {
     ...typography.footnote,
