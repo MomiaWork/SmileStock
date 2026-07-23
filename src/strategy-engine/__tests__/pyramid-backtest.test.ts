@@ -72,4 +72,33 @@ describe('runPyramidBacktest', () => {
     expect(result.tradeCount).toBe(1);
     expect(result.totalReturnPercent).toBeCloseTo(0, 5);
   });
+
+  test('出場後遇到新一波確認的上升趨勢會重新進場（多輪），而不是出場就永遠留在現金', () => {
+    // 沿用上面「進場、兩級加碼、反轉出場」的第一輪(day0~18)，出場後接著盤整3天，
+    // 再接一段乾淨的上漲，重新確認 TRENDING_UP 後應該要重新進場並再加碼一次
+    const closes = [
+      ...Array(7).fill(100),
+      104, 108, 112, 116, 120, 126, 132, 140,
+      130, 120, 110, 100, // 第一輪：進場@100 -> 兩級加碼 -> 出場@100 (day18)
+      100, 100, 100, // 出場後盤整，還不能重新進場
+      105, 110, 115, 120, // 重新確認上升趨勢 -> day23 重新進場 -> day25 第1級加碼
+    ];
+    const result = runPyramidBacktest(bars(closes), baseParams, 45000);
+    // 第一輪：進場+加碼+加碼+出場 = 4筆；第二輪：進場+加碼 = 2筆 -> 共6筆
+    expect(result.tradeCount).toBe(6);
+    expect(result.totalReturnPercent).toBeCloseTo(-8.96, 1);
+    expect(result.maxDrawdownPercent).toBeCloseTo(28.57, 1);
+  });
+
+  test('尚未確認新一波上升趨勢前（仍是盤整或轉空）不會重新進場', () => {
+    // 出場後只有盤整、沒有接上升趨勢：不應該重新進場，資金全程停留在現金
+    const closes = [
+      ...Array(7).fill(100),
+      104, 108, 112, 116, 120, 126, 132, 140,
+      130, 120, 110, 100, // 第一輪出場 @100 (day18)
+      ...Array(10).fill(100), // 出場後持續盤整，沒有新趨勢，不重新進場
+    ];
+    const result = runPyramidBacktest(bars(closes), baseParams, 45000);
+    expect(result.tradeCount).toBe(4); // 只有第一輪的進場+加碼+加碼+出場
+  });
 });
