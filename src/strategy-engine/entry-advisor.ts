@@ -20,16 +20,20 @@ export interface EntryAdvisorOptions {
 }
 
 /**
- * 進場建議：策略本身（網格/RSI/均線交叉）負責「要不要觸發、觸發時投入多少」，
- * trend-classifier 負責「現在是止穩反彈還是還在自由落體」當共用的安全閥門。
- * 只有策略觸發「且」趨勢已確認止穩反彈（笑臉）才建議進場；
- * 策略觸發但趨勢還沒確認（哭臉持續破底、或中性不明朗）一律建議先觀望，
- * 避免買在還沒止跌的下跌途中。三種持久化策略（grid/rsi/ma_cross）共用同一套判斷，
- * 不特別區分「這是不是第一筆投資」——網格策略本來就是每次觸發都要重新檢查趨勢，
- * 不是只管第一筆。
+ * 進場建議：策略本身（網格/RSI/均線交叉）負責「要不要觸發、觸發時投入多少」。
  *
- * `momentumConfirmEnabled` 開啟時，趨勢確認之後還要再過動能確認濾網才算 enter，
- * 沒過就跟趨勢未確認一樣先建議觀望；關閉（預設）時行為跟這個濾網完全無關。
+ * 網格與 RSI 是「接刀」型策略（跌深後承接），trend-classifier 的止穩反彈（笑臉）
+ * 濾網在這兩者身上是必要的安全閥——策略觸發但趨勢還在自由落體（哭臉）或還沒
+ * 確認止穩（中性）時一律建議先觀望，避免買在下跌途中。
+ *
+ * 均線交叉是「順勢」型策略：黃金交叉本身就是「轉強」訊號，不套用止穩反彈濾網——
+ * 那個濾網要求「先創近期新低、再連續收高」，套到順勢策略上等於要求一檔早已穩定
+ * 上漲、根本沒有再創新低的股票先跌破前低才能進場，會讓黃金交叉永遠等不到進場
+ * 時機。均線交叉觸發即建議進場，不再額外檢查趨勢或動能濾網。
+ *
+ * `momentumConfirmEnabled` 只影響網格/RSI：開啟後，趨勢確認之後還要再過動能確認
+ * 濾網才算 enter，沒過就跟趨勢未確認一樣先建議觀望；關閉（預設）時行為跟這個
+ * 濾網完全無關。
  */
 export function adviseEntry(
   history: PricePoint[],
@@ -39,6 +43,15 @@ export function adviseEntry(
   const signal = evaluateStrategy(history, strategyConfig);
   if (!signal.triggered) {
     return { action: 'no_signal', reason: signal.reason };
+  }
+
+  if (strategyConfig.type === 'ma_cross') {
+    return {
+      action: 'enter',
+      tierIndex: signal.tierIndex,
+      amount: signal.amount,
+      reason: `${signal.reason}，建議進場`,
+    };
   }
 
   const trend = classifyTrend(history, options?.trendConfig);

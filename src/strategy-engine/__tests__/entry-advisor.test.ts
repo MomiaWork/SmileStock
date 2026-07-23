@@ -103,7 +103,7 @@ describe('adviseEntry', () => {
     expect(advice.reason).toContain('進場');
   });
 
-  test('均線交叉觸發且趨勢確認止穩反彈（笑臉）時建議進場', () => {
+  test('均線交叉是順勢策略，觸發即建議進場，不套用止穩反彈濾網', () => {
     // 短均線(2)在最後一天黃金交叉長均線(4)，且離開低點後連續收高
     const advice = adviseEntry(
       closesToHistory([100, 95, 88, 80, 78, 85, 100]),
@@ -112,6 +112,19 @@ describe('adviseEntry', () => {
     );
     expect(advice.action).toBe('enter');
     expect(advice.amount).toBeUndefined();
+  });
+
+  test('均線交叉觸發但當天收黑（若套用止穩反彈濾網會被判為「尚未連續收高」）仍建議進場', () => {
+    // [100,100,100,10,90,50]：短均線(2)在最後一天黃金交叉長均線(4)，
+    // 但今天收盤 50 比昨天 90 低。若套用 trend-classifier 的止穩反彈濾網，
+    // 「最近兩天需連續收高」這個條件不成立，會被判為 neutral 而建議觀望；
+    // 均線交叉不套用該濾網，應直接依黃金交叉本身建議進場
+    const advice = adviseEntry(
+      closesToHistory([100, 100, 100, 10, 90, 50]),
+      { type: 'ma_cross', params: maCrossConfig },
+      { trendConfig },
+    );
+    expect(advice.action).toBe('enter');
   });
 
   describe('momentumConfirmEnabled', () => {

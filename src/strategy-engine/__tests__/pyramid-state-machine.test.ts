@@ -1,4 +1,10 @@
-import { evaluatePyramid, type PyramidConfig, type PyramidState } from '../pyramid-state-machine';
+import {
+  advisePyramidEntry,
+  evaluatePyramid,
+  type PyramidConfig,
+  type PyramidEntryConfig,
+  type PyramidState,
+} from '../pyramid-state-machine';
 import type { PricePoint } from '../types';
 
 /**
@@ -27,6 +33,27 @@ const baseConfig: PyramidConfig = {
   // 預設關閉，避免既有測試意外受噴出保護影響；獨立在「噴出保護」describe 裡測試開啟時的行為
   biasFilterEnabled: false,
   biasLimitPct: 20,
+};
+
+/** advisePyramidEntry 用：跟 baseConfig 一樣，只是還沒有 entryPrice（尚未建倉） */
+const entryConfig: PyramidEntryConfig = {
+  budget: baseConfig.budget,
+  weights: baseConfig.weights,
+  maShort: baseConfig.maShort,
+  maLong: baseConfig.maLong,
+  maConvergePct: baseConfig.maConvergePct,
+  consolidationLookback: baseConfig.consolidationLookback,
+  rangeNarrowPct: baseConfig.rangeNarrowPct,
+  atrShrinkRatio: baseConfig.atrShrinkRatio,
+  atrPeriod: baseConfig.atrPeriod,
+  stateConfirmDays: baseConfig.stateConfirmDays,
+  volumeConfirmRatio: baseConfig.volumeConfirmRatio,
+  breakoutConfirmDays: baseConfig.breakoutConfirmDays,
+  stopBufferPct: baseConfig.stopBufferPct,
+  trailMaBufferPct: baseConfig.trailMaBufferPct,
+  addTriggerPct: baseConfig.addTriggerPct,
+  biasFilterEnabled: baseConfig.biasFilterEnabled,
+  biasLimitPct: baseConfig.biasLimitPct,
 };
 
 function bars(closes: number[], volumes?: number[]): PricePoint[] {
@@ -345,5 +372,43 @@ describe('pyramid-state-machine', () => {
       expect(signal.triggered).toBe(false);
       expect(signal.action).toBe('hold');
     });
+  });
+});
+
+describe('advisePyramidEntry', () => {
+  it('上升趨勢（含已經漲了一段、沒有靠近期新低反彈）→ 建議進場並給出起始部位金額', () => {
+    // risingCloses 一路創高，不是「跌深後止穩反彈」，證明首筆進場不靠止穩反彈濾網
+    const advice = advisePyramidEntry(bars(risingCloses), entryConfig);
+    expect(advice.action).toBe('enter');
+    expect(advice.state).toBe('TRENDING_UP');
+    // weights [1, 1.5, 2]，起始部位 = 45000 * 1 / 4.5 = 10000
+    expect(advice.amount).toBeCloseTo(10000);
+    expect(advice.reason).toContain('entryPrice');
+  });
+
+  it('盤整 → 建議觀望，不給金額', () => {
+    const advice = advisePyramidEntry(bars(flatCloses), entryConfig);
+    expect(advice.action).toBe('wait');
+    expect(advice.state).toBe('CONSOLIDATION');
+    expect(advice.amount).toBeUndefined();
+  });
+
+  it('下降趨勢 → 建議觀望', () => {
+    const advice = advisePyramidEntry(bars(fallingCloses), entryConfig);
+    expect(advice.action).toBe('wait');
+    expect(advice.state).toBe('TRENDING_DOWN');
+  });
+
+  it('資料筆數不足 → insufficient_data，state 為 null', () => {
+    const advice = advisePyramidEntry(bars(risingCloses.slice(0, 3)), entryConfig);
+    expect(advice.action).toBe('insufficient_data');
+    expect(advice.state).toBeNull();
+    expect(advice.amount).toBeUndefined();
+  });
+
+  it('空歷史資料 → insufficient_data', () => {
+    const advice = advisePyramidEntry([], entryConfig);
+    expect(advice.action).toBe('insufficient_data');
+    expect(advice.state).toBeNull();
   });
 });

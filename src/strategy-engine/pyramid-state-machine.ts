@@ -531,3 +531,66 @@ export function evaluatePyramid(
     nextState: next,
   };
 }
+
+/** 首次建倉建議用的設定：跟 PyramidConfig 差在沒有 entryPrice——還沒建倉的人本來就沒有這個值 */
+export type PyramidEntryConfig = Omit<PyramidConfig, 'entryPrice'>;
+
+export type PyramidEntryAction = 'enter' | 'wait' | 'insufficient_data';
+
+export interface PyramidEntryAdvice {
+  action: PyramidEntryAction;
+  state: MarketState | null;
+  /** action 為 enter 時：建議首筆（第 0 級）投入金額 */
+  amount?: number;
+  reason: string;
+}
+
+/**
+ * 首次建倉建議。`evaluatePyramid` 假設 entryPrice 已經是既定事實（使用者已經持有部位，
+ * 回頭把成本價填進設定交給狀態機接手），本身不回答「現在該不該買第一筆」。
+ *
+ * 判斷邏輯刻意不套用 entry-advisor.ts 的止穩反彈（笑臉）濾網：那是網格/RSI「接刀」型
+ * 策略的安全閥語意，要求「先創近期新低、再連續收高」才算止穩。金字塔是順勢加碼策略，
+ * 一檔已經穩定上漲、很久沒有創新低的股票，套用該濾網會永遠等不到「再次破底後反彈」
+ * 而卡死進場。改用金字塔狀態機自己的市場狀態分類——TRENDING_UP／BREAKOUT_UP
+ * 才建議進場，跟 pyramid-backtest.ts 判斷「出場後何時可以開新一輪」用的是同一套邏輯。
+ *
+ * 做法：用今天收盤價當試算用的 entryPrice 呼叫 evaluatePyramid（不帶 prevState），
+ * 只取其中的市場狀態分類結果；回傳的 add/exit 訊號本身沒有意義（試算價不是真成本），
+ * 不對外暴露。
+ */
+export function advisePyramidEntry(
+  history: PricePoint[],
+  config: PyramidEntryConfig,
+): PyramidEntryAdvice {
+  if (history.length === 0) {
+    return { action: 'insufficient_data', state: null, reason: '尚無歷史價格資料' };
+  }
+
+  const currentPrice = history[history.length - 1].close;
+  const trialConfig: PyramidConfig = { ...config, entryPrice: currentPrice };
+  const { signal, nextState } = evaluatePyramid(history, trialConfig);
+
+  if (signal.action === 'insufficient_data') {
+    return { action: 'insufficient_data', state: null, reason: signal.reason };
+  }
+
+  const stateLabel = MARKET_STATE_LABEL[nextState.currentState];
+
+  if (nextState.currentState === 'TRENDING_UP' || nextState.currentState === 'BREAKOUT_UP') {
+    const weightSum = config.weights.reduce((acc, w) => acc + w, 0);
+    const amount = (config.budget * config.weights[0]) / weightSum;
+    return {
+      action: 'enter',
+      state: nextState.currentState,
+      amount,
+      reason: `目前研判為${stateLabel}，適合建立金字塔起始部位，以現價 ${currentPrice} 建議投入約 ${amount.toFixed(0)} 元；進場後請將實際成交價填入策略設定的 entryPrice，交由狀態機接手後續加碼與停損`,
+    };
+  }
+
+  return {
+    action: 'wait',
+    state: nextState.currentState,
+    reason: `目前研判為${stateLabel}，尚不建議建立金字塔起始部位，請等待轉為上升趨勢或向上突破再進場`,
+  };
+}

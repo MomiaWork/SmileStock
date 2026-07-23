@@ -13,6 +13,7 @@ export type StrategyType = 'grid' | 'rsi' | 'ma_cross';
  */
 export {
   evaluatePyramid,
+  advisePyramidEntry,
   DEFAULT_PYRAMID_PARAMS,
   MARKET_STATE_LABEL,
 } from './pyramid-state-machine';
@@ -20,6 +21,9 @@ export type {
   MarketState,
   PyramidAction,
   PyramidConfig,
+  PyramidEntryAction,
+  PyramidEntryAdvice,
+  PyramidEntryConfig,
   PyramidResult,
   PyramidSignal,
   PyramidState,
