@@ -54,7 +54,7 @@ export async function addWatchlistItem(
 ): Promise<number> {
   const current = await getWatchlist(db);
   if (current.length >= MAX_WATCHLIST_SIZE) {
-    throw new Error(`watchlist-repo: 最多只能監控 ${MAX_WATCHLIST_SIZE} 檔股票`);
+    throw new Error(`watchlist-repo: 最多只能監控 ${MAX_WATCHLIST_SIZE} 檔標的`);
   }
 
   const result = await db.runAsync(
@@ -227,13 +227,13 @@ export async function getAllStrategyConfigs(
 }
 
 /**
- * 編輯股票時用「先刪除該股票所有策略設定、再依表單重新新增」的方式覆蓋，
+ * 編輯標的時用「先刪除該標的所有策略設定、再依表單重新新增」的方式覆蓋，
  * 避免處理新增/更新/刪除三種情況的複雜比對邏輯。
  *
  * 注意：刪除 strategy_config 列會透過 ON DELETE CASCADE 一併刪掉對應的 pyramid_state，
  * 新插入的列拿到新的 id，等於金字塔加碼的狀態機每次編輯（哪怕只是改查價間隔這種
  * 無關欄位）都會被重置回初始狀態。這是已知的限制，不在這次改動範圍內處理——
- * 要避免誤觸，UI 層應該在使用者編輯已啟用金字塔加碼的股票時明確提示。
+ * 要避免誤觸，UI 層應該在使用者編輯已啟用金字塔加碼的標的時明確提示。
  */
 export async function replaceStrategyConfigs(
   db: SQLiteDatabase,

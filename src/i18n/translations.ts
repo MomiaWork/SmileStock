@@ -72,6 +72,7 @@ export interface Translations {
     fieldAddOnStyle: string;
     addOnStyleEqual: string;
     addOnStylePyramid: string;
+    addOnStyleDecreasing: string;
     fieldAddOnPace: string;
     validationPyramid: string;
     pyramidResetWarningTitle: string;
@@ -169,14 +170,14 @@ export interface Translations {
     sectionAnalyzeFooter: (months: number) => string;
     fieldStockCode: string;
     placeholderStockCode: string;
+    fieldBudget: string;
     analyze: string;
     pleaseEnterCode: string;
+    invalidBudget: string;
     insufficientDataTitle: string;
     insufficientDataMessage: (code: string, months: number) => string;
     analyzeFailedTitle: string;
-    resultsSectionTitle: string;
     disclaimer: (code: string, months: number) => string;
-    noResults: string;
     resultLine1: (spacing: number, tier: number, filterLabel: string) => string;
     filterOn: string;
     filterOff: string;
@@ -184,6 +185,10 @@ export interface Translations {
     comboSectionTitle: string;
     comboFooter: string;
     applyCombo: string;
+    editCombo: string;
+    priceNotFoundTitle: string;
+    priceNotFoundMessage: (code: string) => string;
+    applyFailedTitle: string;
     buyHoldLabel: (returnPercent: string) => string;
     strategyTypeGrid: string;
     strategyTypePyramid: string;
@@ -273,7 +278,7 @@ export const zh: Translations = {
     saveFailedTitle: '儲存失敗',
     sectionPyramid: '金字塔加碼',
     sectionPyramidFooter:
-      '順勢策略：確認漲勢成立才加碼，加碼幅度隨漲幅拉大，移動停損只上移不下移，跌破才建議出場或減碼，由你自己判斷是否要動作。沒有固定停利/停損%，也不設無條件出場的硬停損——下跌可能只是暫時拉回，是否出場由你參考當下建議決定。趨勢判斷用的均線等參數固定用內建設定，不開放調整，避免貼合單一股票的歷史雜訊。',
+      '順勢策略：確認漲勢成立才加碼，加碼幅度隨漲幅拉大，移動停損只上移不下移，跌破才建議出場或減碼，由你自己判斷是否要動作。沒有固定停利/停損%，也不設無條件出場的硬停損——下跌可能只是暫時拉回，是否出場由你參考當下建議決定。內建噴出保護：股價短期漲多、乖離均線過大時會先暫緩加碼一次，不會另外提早出場。趨勢判斷用的均線等參數固定用內建設定，不開放調整，避免貼合單一標的的歷史雜訊。提醒：若你用融資或槓桿操作，本策略的出場判斷會晚於單純固定停損（避免被正常拉回洗出場），請自行留意維持率，必要時提早減碼。',
     fieldPyramidEnabled: '啟用金字塔加碼',
     fieldEntryPrice: '進場價',
     placeholderEntryFetching: '查詢中...',
@@ -281,6 +286,7 @@ export const zh: Translations = {
     fieldAddOnStyle: '加碼風格',
     addOnStyleEqual: '等權重（每級加碼金額相同）',
     addOnStylePyramid: '金字塔式（越漲加越多）',
+    addOnStyleDecreasing: '遞減式（越漲加越少）',
     fieldAddOnPace: '加碼步調（漲多少 % 加碼一次）',
     validationPyramid: '請確認金字塔加碼的進場價已正確填寫（需大於 0）',
     pyramidResetWarningTitle: '注意：儲存會重置金字塔加碼狀態',
@@ -393,19 +399,19 @@ export const zh: Translations = {
   strategyRecommendation: {
     sectionAnalyze: '分析標的',
     sectionAnalyzeFooter: (months) =>
-      `輸入標的代號，用過去約 ${months} 個月的歷史資料試算網格與金字塔加碼兩種策略的表現，幫你找出兩種策略各自最合適的參數。套用後兩個策略會一起啟用，之後每天由 App 依市場狀態（盤整/趨勢）自動決定聽哪個策略的，你不需要預測未來走勢、也不用二選一。抓取歷史資料需要依序呼叫多次 TWSE API，可能需要一段時間，請耐心等候。`,
+      `輸入標的代號，用過去約 ${months} 個月的歷史資料試算網格與金字塔加碼兩種策略的表現，幫你找出兩種策略各自最合適的參數。每天由 App 依市場狀態（盤整/趨勢）自動決定執行策略。抓取歷史資料需要依序呼叫多次 TWSE API，可能需要一段時間，請耐心等候。`,
     fieldStockCode: '標的代碼',
     placeholderStockCode: '例如 2330',
+    fieldBudget: '預算',
     analyze: '分析',
     pleaseEnterCode: '請先輸入標的代號',
+    invalidBudget: '請輸入有效的預算金額',
     insufficientDataTitle: '資料不足',
     insufficientDataMessage: (code, months) =>
       `${code} 過去 ${months} 個月的歷史資料不足以進行回測分析`,
     analyzeFailedTitle: '分析失敗',
-    resultsSectionTitle: '回測排行（參考用，網格＋金字塔混合依總報酬率排序，前 5 名）',
     disclaimer: (code, months) =>
       `以上是根據 ${code} 過去約 ${months} 個月自己的歷史資料試算出來的結果，不是保證未來也會這樣表現，僅供參考。`,
-    noResults: '資料不足，無法產生建議',
     resultLine1: (spacing, tier, filterLabel) =>
       `間距 ${spacing}% ／ ${tier} 檔 ／ 確認濾網${filterLabel}`,
     filterOn: '開',
@@ -415,7 +421,11 @@ export const zh: Translations = {
     comboSectionTitle: '建議設定（網格＋金字塔一起啟用）',
     comboFooter:
       '兩種策略各取回測表現最好的一組參數。套用後兩個策略一起啟用，每天由 App 依市場狀態自動決定聽誰的：盤整時依網格逢低承接，趨勢向上時依金字塔順勢加碼，趨勢向下時明確提醒不進場。',
-    applyCombo: '套用這組設定（雙策略）',
+    applyCombo: '套用（回首頁）',
+    editCombo: '編輯細項再儲存',
+    priceNotFoundTitle: '查無目前價格',
+    priceNotFoundMessage: (code) => `查不到 ${code} 目前價格，請改用「編輯細項再儲存」手動輸入`,
+    applyFailedTitle: '套用失敗',
     buyHoldLabel: (returnPercent) =>
       `同期間單純買進持有報酬率：${returnPercent}% ／ 幫你判斷這段期間主動操作是否真的比不管它更好`,
     strategyTypeGrid: '網格',
@@ -512,7 +522,7 @@ export const en: Translations = {
     saveFailedTitle: 'Save Failed',
     sectionPyramid: 'Pyramid Add-on',
     sectionPyramidFooter:
-      "A trend-following strategy: only adds once an uptrend is confirmed, add-on size grows with the move, trailing stop only moves up, and a break below it advises exiting or trimming — you decide whether to act. There's no fixed take-profit/stop-loss % and no unconditional hard stop: a drop may just be a temporary pullback, so whether to exit is your call based on the current advice. Trend-detection parameters (moving averages, etc.) are fixed at built-in defaults and not user-adjustable, to avoid fitting one stock's historical noise.",
+      "A trend-following strategy: only adds once an uptrend is confirmed, add-on size grows with the move, trailing stop only moves up, and a break below it advises exiting or trimming — you decide whether to act. There's no fixed take-profit/stop-loss % and no unconditional hard stop: a drop may just be a temporary pullback, so whether to exit is your call based on the current advice. Built-in blow-off protection: when price runs too far above its moving average in a short time, the next add-on is skipped for one round — this never triggers an early exit on its own. Trend-detection parameters (moving averages, etc.) are fixed at built-in defaults and not user-adjustable, to avoid fitting one stock's historical noise. Note: if you trade this on margin/leverage, exits here lag behind a plain fixed stop-loss on purpose (to avoid being shaken out by a normal pullback) — watch your maintenance margin yourself and trim early if needed.",
     fieldPyramidEnabled: 'Enable Pyramid Add-on',
     fieldEntryPrice: 'Entry Price',
     placeholderEntryFetching: 'Fetching...',
@@ -520,6 +530,7 @@ export const en: Translations = {
     fieldAddOnStyle: 'Add-on Style',
     addOnStyleEqual: 'Equal weight (same amount each add-on)',
     addOnStylePyramid: 'Pyramid style (larger amounts as it rises)',
+    addOnStyleDecreasing: 'Decreasing (smaller amounts as it rises)',
     fieldAddOnPace: 'Add-on Pace (% rise before adding again)',
     validationPyramid:
       'Please make sure the pyramid add-on entry price is filled in correctly (must be greater than 0)',
@@ -639,17 +650,16 @@ export const en: Translations = {
       `Enter a stock code to backtest both grid and pyramid add-on strategies against roughly the past ${months} months of history and find the best-performing parameters for each. When applied, both strategies are enabled together, and each day the app decides which one to follow based on the market state (range-bound vs. trending) — you don't need to predict the future or pick just one. Fetching history calls the TWSE API multiple times in sequence, so it may take a while — please be patient.`,
     fieldStockCode: 'Stock Code',
     placeholderStockCode: 'e.g. 2330',
+    fieldBudget: 'Budget',
     analyze: 'Analyze',
     pleaseEnterCode: 'Please enter a stock code first',
+    invalidBudget: 'Please enter a valid budget amount',
     insufficientDataTitle: 'Insufficient Data',
     insufficientDataMessage: (code, months) =>
       `Not enough historical data for ${code} over the past ${months} months to run a backtest`,
     analyzeFailedTitle: 'Analysis Failed',
-    resultsSectionTitle:
-      'Backtest Ranking (for reference — grid + pyramid mixed, ranked by total return, top 5)',
     disclaimer: (code, months) =>
       `The above is backtested using ${code}'s own historical data over roughly the past ${months} months. It does not guarantee future performance — for reference only.`,
-    noResults: 'Not enough data to generate suggestions',
     resultLine1: (spacing, tier, filterLabel) =>
       `Spacing ${spacing}% ／ ${tier} tiers ／ Confirm filter ${filterLabel}`,
     filterOn: 'On',
@@ -659,7 +669,12 @@ export const en: Translations = {
     comboSectionTitle: 'Suggested Settings (grid + pyramid enabled together)',
     comboFooter:
       'The best-performing backtested parameters for each strategy. When applied, both strategies are enabled together, and each day the app decides which one to follow based on the market state: buy the dips with the grid in range-bound markets, add with the pyramid in uptrends, and stay out with a clear reminder in downtrends.',
-    applyCombo: 'Apply These Settings (both strategies)',
+    applyCombo: 'Apply (back to home)',
+    editCombo: 'Edit details before saving',
+    priceNotFoundTitle: 'Current Price Not Found',
+    priceNotFoundMessage: (code) =>
+      `Could not find the current price for ${code}. Use "Edit details before saving" to enter it manually.`,
+    applyFailedTitle: 'Apply Failed',
     buyHoldLabel: (returnPercent) =>
       `Buy-and-hold return over the same period: ${returnPercent}% ／ Use this to judge whether active management actually beat just holding`,
     strategyTypeGrid: 'Grid',

@@ -54,6 +54,13 @@ export interface PyramidConfig {
   trailMaBufferPct: number;
   /** 相對上一次加碼價的加碼觸發漲幅（%） */
   addTriggerPct: number;
+  /** 噴出保護總開關：開啟後，乖離率超過 biasLimitPct 時當次加碼降級為續抱。
+   * 選填，缺省時用 DEFAULT_PYRAMID_PARAMS 補上——這個欄位比其他參數晚加入，
+   * 資料庫裡已存的舊 PyramidConfig JSON 不會有這個欄位，選填才不會讓既有標的
+   * 一律讀取失敗 */
+  biasFilterEnabled?: boolean;
+  /** 乖離率警戒門檻（%），(收盤−短均線)/短均線 超過此值視為噴出過熱。選填，理由同上 */
+  biasLimitPct?: number;
 }
 
 export const DEFAULT_PYRAMID_PARAMS = {
@@ -70,6 +77,10 @@ export const DEFAULT_PYRAMID_PARAMS = {
   stopBufferPct: 4,
   trailMaBufferPct: 2.5,
   addTriggerPct: 5,
+  // 預設開啟：股價短期過度偏離均線（噴出式上漲）時只降級為續抱，不阻擋正常趨勢加碼，
+  // 門檻抓得夠寬鬆（20%）只在真正極端的噴出行情才會介入
+  biasFilterEnabled: true,
+  biasLimitPct: 20,
 } as const;
 
 export interface PyramidState {
@@ -128,6 +139,8 @@ function isPyramidConfig(config: unknown): config is PyramidConfig {
     'addTriggerPct',
   ];
   if (!numberKeys.every((k) => typeof c[k] === 'number')) return false;
+  if (c.biasFilterEnabled !== undefined && typeof c.biasFilterEnabled !== 'boolean') return false;
+  if (c.biasLimitPct !== undefined && typeof c.biasLimitPct !== 'number') return false;
   return Array.isArray(c.weights) && c.weights.every((w) => typeof w === 'number');
 }
 
@@ -167,6 +180,9 @@ function validateConfig(config: PyramidConfig): void {
     if (!((config[key] as number) > 0)) {
       throw new Error(`pyramid: ${key} 必須大於 0`);
     }
+  }
+  if (config.biasLimitPct !== undefined && !(config.biasLimitPct > 0)) {
+    throw new Error('pyramid: biasLimitPct 必須大於 0');
   }
 }
 
@@ -250,7 +266,7 @@ function classifyRaw(history: PricePoint[], config: PyramidConfig): MarketState 
   return null;
 }
 
-/** 匯出給新增股票時的歷史回補流程使用，確保一次補齊足夠天數，不用乾等每日累積 */
+/** 匯出給新增標的時的歷史回補流程使用，確保一次補齊足夠天數，不用乾等每日累積 */
 export function minRequiredBars(config: PyramidConfig): number {
   // 長均線、盤整區間回看、ATR 前後兩期比較（含 TR 需要的前一日收盤）取最大
   return Math.max(config.maLong, config.consolidationLookback, config.atrPeriod * 2 + 1);
@@ -286,6 +302,8 @@ export function evaluatePyramid(
     throw new Error('pyramid: config 格式不正確，缺少必要欄位（見 PyramidConfig 定義）');
   }
   validateConfig(config);
+  const biasFilterEnabled = config.biasFilterEnabled ?? DEFAULT_PYRAMID_PARAMS.biasFilterEnabled;
+  const biasLimitPct = config.biasLimitPct ?? DEFAULT_PYRAMID_PARAMS.biasLimitPct;
 
   const minRequired = minRequiredBars(config);
   if (history.length < minRequired) {
@@ -394,9 +412,12 @@ export function evaluatePyramid(
   }
 
   // 移動停損：只上移不下移（棘輪式）
+  let maShortValue: number | null = null;
   if (next.currentState === 'TRENDING_UP' || next.currentState === 'BREAKOUT_UP') {
-    const closes = history.map((p) => p.close);
-    const maShortValue = sma(closes, config.maShort);
+    maShortValue = sma(
+      history.map((p) => p.close),
+      config.maShort,
+    );
     next.stopPrice = Math.max(next.stopPrice, maShortValue * (1 - config.trailMaBufferPct / 100));
   } else if (next.currentState === 'CONSOLIDATION') {
     next.stopPrice = Math.max(next.stopPrice, next.lastAddPrice * (1 - config.stopBufferPct / 100));
@@ -422,6 +443,21 @@ export function evaluatePyramid(
           },
           nextState: next,
         };
+      }
+      if (biasFilterEnabled && maShortValue !== null) {
+        const biasPct = ((close - maShortValue) / maShortValue) * 100;
+        if (biasPct > biasLimitPct) {
+          return {
+            signal: {
+              triggered: false,
+              action: 'hold',
+              reason: `${stateLabel}：加碼條件成立，但目前乖離率 ${biasPct.toFixed(1)}% 已超過噴出警戒門檻 ${biasLimitPct}%，暫緩本次加碼並續抱，停損維持 ${next.stopPrice.toFixed(2)}`,
+              state: next.currentState,
+              stopPrice: next.stopPrice,
+            },
+            nextState: next,
+          };
+        }
       }
       const tier = next.currentTier + 1;
       const amount = tierAmount(config, tier);

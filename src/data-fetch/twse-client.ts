@@ -57,7 +57,7 @@ function parseNumberField(value: string, fieldName: string, code: string): numbe
   const cleaned = value.replace(/,/g, '');
   const n = Number(cleaned);
   if (Number.isNaN(n)) {
-    throw new Error(`twse-client: 股票 ${code} 的欄位 ${fieldName} 格式不正確："${value}"`);
+    throw new Error(`twse-client: 標的 ${code} 的欄位 ${fieldName} 格式不正確："${value}"`);
   }
   return n;
 }
@@ -145,22 +145,22 @@ function toYyyymm01(date: Date): string {
 }
 
 /**
- * 抓取單一股票、單一月份的每日收盤資料（TWSE 個股日成交資訊，非 openapi.twse.com.tw 的 v1 端點，
+ * 抓取單一標的、單一月份的每日收盤資料（TWSE 個股日成交資訊，非 openapi.twse.com.tw 的 v1 端點，
  * 但同樣是 TWSE 官方網域、免費、無需 API key）。
- * 該月尚無資料（例如股票掛牌前、或月份還沒有任何交易日）時回傳空陣列，不視為錯誤；
+ * 該月尚無資料（例如標的掛牌前、或月份還沒有任何交易日）時回傳空陣列，不視為錯誤；
  * 回應格式本身不正確（缺欄位/型別錯誤）才丟明確錯誤。
  */
 async function fetchMonthlyQuotes(code: string, yyyymm01: string): Promise<TwseDailyQuote[]> {
   const url = `${STOCK_DAY_URL}?response=json&date=${yyyymm01}&stockNo=${encodeURIComponent(code)}`;
   const raw = await fetchWithRetry(url);
   if (!isRawStockDayResponse(raw)) {
-    throw new Error(`twse-client: 股票 ${code} 的月資料回傳格式不正確`);
+    throw new Error(`twse-client: 標的 ${code} 的月資料回傳格式不正確`);
   }
   if (raw.stat !== 'OK') {
     return [];
   }
   if (!Array.isArray(raw.data)) {
-    throw new Error(`twse-client: 股票 ${code} 的月資料缺少 data 陣列`);
+    throw new Error(`twse-client: 標的 ${code} 的月資料缺少 data 陣列`);
   }
 
   const quotes: TwseDailyQuote[] = [];
@@ -170,7 +170,7 @@ async function fetchMonthlyQuotes(code: string, yyyymm01: string): Promise<TwseD
       row.length < STOCK_DAY_FIELD_COUNT ||
       !row.every((v) => typeof v === 'string')
     ) {
-      throw new Error(`twse-client: 股票 ${code} 的月資料列格式不正確：${JSON.stringify(row)}`);
+      throw new Error(`twse-client: 標的 ${code} 的月資料列格式不正確：${JSON.stringify(row)}`);
     }
     // 當天完全沒有成交（例如暫停交易）時，TWSE 開高低收欄位會是 "--" 而不是省略該列，
     // 這不是格式錯誤，是「這天沒有價格資料」的合法表示，跳過該列即可，不用整批噴錯中斷
@@ -194,9 +194,9 @@ async function fetchMonthlyQuotes(code: string, yyyymm01: string): Promise<TwseD
 const BACKFILL_MAX_MONTHS_BACK = 6;
 
 /**
- * 回補單一股票至少 minTradingDays 筆歷史收盤資料（由當月往前逐月抓取，最多回溯
- * BACKFILL_MAX_MONTHS_BACK 個月）。用於新增股票時讓進場確認濾網不用乾等資料逐日累積。
- * 若回溯到底仍不足 minTradingDays 筆（例如剛掛牌不久的股票），就回傳目前抓得到的全部，
+ * 回補單一標的至少 minTradingDays 筆歷史收盤資料（由當月往前逐月抓取，最多回溯
+ * BACKFILL_MAX_MONTHS_BACK 個月）。用於新增標的時讓進場確認濾網不用乾等資料逐日累積。
+ * 若回溯到底仍不足 minTradingDays 筆（例如剛掛牌不久的標的），就回傳目前抓得到的全部，
  * 交給 strategy-engine 自行回報「資料不足」，這裡不補算不假設。
  */
 export async function fetchHistoricalDailyQuotes(
@@ -218,10 +218,10 @@ export async function fetchHistoricalDailyQuotes(
 }
 
 /**
- * 抓取單一股票近 months 個月的歷史資料，用於「策略建議」畫面的回測，跟
- * fetchHistoricalDailyQuotes（新增股票時的小量快速回補，受 BACKFILL_MAX_MONTHS_BACK
+ * 抓取單一標的近 months 個月的歷史資料，用於「策略建議」畫面的回測，跟
+ * fetchHistoricalDailyQuotes（新增標的時的小量快速回補，受 BACKFILL_MAX_MONTHS_BACK
  * 限制）是兩個獨立用途，互不影響、互不共用限制。抓到的資料只在記憶體中用於回測計算，
- * 呼叫端不應該把它寫進 price_history（那是給已追蹤股票逐日累積用的）。
+ * 呼叫端不應該把它寫進 price_history（那是給已追蹤標的逐日累積用的）。
  * 回溯到掛牌前的月份，fetchMonthlyQuotes 會回傳空陣列（非錯誤），不影響其餘月份的抓取。
  */
 export async function fetchExtendedHistoricalQuotes(
@@ -369,7 +369,7 @@ export async function fetchRealtimeQuotes(codes: string[]): Promise<TwseRealtime
 }
 
 /**
- * 抓取指定股票代號的最新日收盤資料。
+ * 抓取指定標的代號的最新日收盤資料。
  * TWSE OpenAPI 一次回傳所有上市證券，這裡在本機端過濾出關注的代號。
  * 找不到的代號、或資料欄位缺失/格式錯誤，一律丟明確錯誤，不靜默略過。
  */
@@ -389,7 +389,7 @@ export async function fetchDailyQuotes(codes: string[]): Promise<TwseDailyQuote[
     if (typeof code !== 'string' || !codeSet.has(code)) continue;
 
     if (!isRawTwseRecord(record)) {
-      throw new Error(`twse-client: 股票 ${code} 的資料缺少必要欄位：${JSON.stringify(record)}`);
+      throw new Error(`twse-client: 標的 ${code} 的資料缺少必要欄位：${JSON.stringify(record)}`);
     }
     foundCodes.add(code);
     quotes.push(toQuote(record));
@@ -397,7 +397,7 @@ export async function fetchDailyQuotes(codes: string[]): Promise<TwseDailyQuote[
 
   const missing = codes.filter((code) => !foundCodes.has(code));
   if (missing.length > 0) {
-    throw new Error(`twse-client: TWSE API 回傳資料中找不到股票代號：${missing.join(', ')}`);
+    throw new Error(`twse-client: TWSE API 回傳資料中找不到標的代號：${missing.join(', ')}`);
   }
 
   return quotes;

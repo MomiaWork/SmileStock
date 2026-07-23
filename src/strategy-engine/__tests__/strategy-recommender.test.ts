@@ -1,4 +1,9 @@
-import { classifyRisk, recommendStrategyParams } from '../strategy-recommender';
+import {
+  classifyRisk,
+  PYRAMID_WEIGHTS_OPTIONS,
+  pyramidWeightsForProfile,
+  recommendStrategyParams,
+} from '../strategy-recommender';
 import type { PricePoint } from '../types';
 
 /** 產生一段有漲有跌、足夠長的合成走勢，用來驗證組合數量與排序，不驗證精確數值 */
@@ -28,8 +33,9 @@ describe('recommendStrategyParams', () => {
   });
 
   test('回傳兩種策略各自報酬率最高的一組，供「套用建議」同時啟用雙策略', () => {
-    const { bestGrid, bestPyramid, recommendations } =
-      recommendStrategyParams(syntheticHistory(300));
+    const { bestGrid, bestPyramid, recommendations } = recommendStrategyParams(
+      syntheticHistory(300),
+    );
     expect(bestGrid?.strategyType).toBe('grid');
     expect(bestPyramid?.strategyType).toBe('pyramid');
     // 各自都是同類型組合中報酬率最高的（不會輸給榜單上任何同類型組合）
@@ -41,7 +47,7 @@ describe('recommendStrategyParams', () => {
     }
   });
 
-  test('資料足夠時，網格3×3×2=18組合＋金字塔2×3=6組合混合排序，回傳前 5 名', () => {
+  test('資料足夠時，網格與金字塔全部參數組合混合排序，回傳前 5 名', () => {
     const { recommendations } = recommendStrategyParams(syntheticHistory(300));
     expect(recommendations).toHaveLength(5);
   });
@@ -85,6 +91,20 @@ describe('recommendStrategyParams', () => {
         );
       }
     }
+  });
+});
+
+describe('pyramidWeightsForProfile', () => {
+  test('equal 對應等權重、pyramid 對應遞增、decreasing 對應遞減', () => {
+    expect(pyramidWeightsForProfile('equal')).toEqual(PYRAMID_WEIGHTS_OPTIONS[0]);
+    expect(pyramidWeightsForProfile('pyramid')).toEqual(PYRAMID_WEIGHTS_OPTIONS[1]);
+    expect(pyramidWeightsForProfile('decreasing')).toEqual(PYRAMID_WEIGHTS_OPTIONS[2]);
+  });
+
+  test('遞減權重是遞增權重反過來，越漲加越少', () => {
+    const increasing = pyramidWeightsForProfile('pyramid');
+    const decreasing = pyramidWeightsForProfile('decreasing');
+    expect(decreasing).toEqual([...increasing].reverse());
   });
 });
 

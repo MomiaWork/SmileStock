@@ -24,6 +24,9 @@ const baseConfig: PyramidConfig = {
   stopBufferPct: 4,
   trailMaBufferPct: 2,
   addTriggerPct: 5,
+  // 預設關閉，避免既有測試意外受噴出保護影響；獨立在「噴出保護」describe 裡測試開啟時的行為
+  biasFilterEnabled: false,
+  biasLimitPct: 20,
 };
 
 function bars(closes: number[], volumes?: number[]): PricePoint[] {
@@ -76,6 +79,12 @@ describe('pyramid-state-machine', () => {
       expect(() =>
         evaluatePyramid(bars(flatCloses), { ...baseConfig, maShort: 5, maLong: 5 }),
       ).toThrow(/maShort/);
+    });
+
+    it('biasLimitPct 不是正數時丟出錯誤', () => {
+      expect(() => evaluatePyramid(bars(flatCloses), { ...baseConfig, biasLimitPct: 0 })).toThrow(
+        /biasLimitPct/,
+      );
     });
   });
 
@@ -257,6 +266,53 @@ describe('pyramid-state-machine', () => {
       expect(nextState.currentState).toBe('TRENDING_UP');
       expect(nextState.rangeHigh).toBeNull();
       expect(signal.action).toBe('hold');
+    });
+  });
+
+  describe('噴出保護（乖離率濾網）', () => {
+    // 前 6 天收盤都是 100，最後一天收盤 close：短均線(3) = (100+100+close)/3，
+    // 乖離率 = (close − 短均線) / 短均線 × 100。close=120 時乖離率剛好 12.5%
+    // （選這組數字讓除法結果是可精確表示的二進位小數，避免浮點誤差干擾邊界測試）。
+    const spikeCloses = (close: number): number[] => [100, 100, 100, 100, 100, 100, close];
+
+    it('乖離率剛好等於門檻（嚴格大於才擋）時仍正常加碼', () => {
+      const config = { ...baseConfig, biasFilterEnabled: true, biasLimitPct: 12.5 };
+      const prev = makeState({ lastAddPrice: 100 });
+      const { signal, nextState } = evaluatePyramid(bars(spikeCloses(120)), config, prev);
+      expect(signal.triggered).toBe(true);
+      expect(signal.action).toBe('add');
+      expect(nextState.currentTier).toBe(1);
+    });
+
+    it('乖離率超過門檻時，加碼降級為續抱，不消耗加碼檔位', () => {
+      const config = { ...baseConfig, biasFilterEnabled: true, biasLimitPct: 12.5 };
+      const prev = makeState({ lastAddPrice: 100 });
+      const { signal, nextState } = evaluatePyramid(bars(spikeCloses(140)), config, prev);
+      expect(signal.triggered).toBe(false);
+      expect(signal.action).toBe('hold');
+      expect(signal.reason).toContain('乖離率');
+      expect(nextState.currentTier).toBe(0);
+    });
+
+    it('濾網關閉時，即使乖離率極端也照常加碼', () => {
+      const config = { ...baseConfig, biasFilterEnabled: false, biasLimitPct: 12.5 };
+      const prev = makeState({ lastAddPrice: 100 });
+      const { signal, nextState } = evaluatePyramid(bars(spikeCloses(140)), config, prev);
+      expect(signal.triggered).toBe(true);
+      expect(signal.action).toBe('add');
+      expect(nextState.currentTier).toBe(1);
+    });
+
+    it('config 完全沒有這兩個欄位時（例如舊版存進 DB 的資料）不噴錯，套用預設值（開啟、20%）', () => {
+      const { biasFilterEnabled: _enabled, biasLimitPct: _limit, ...legacyConfig } = baseConfig;
+      const prev = makeState({ lastAddPrice: 100 });
+      // 20% 門檻下，乖離 12.5%（close=120）不會被擋
+      const allowed = evaluatePyramid(bars(spikeCloses(120)), legacyConfig, prev);
+      expect(allowed.signal.action).toBe('add');
+      // 乖離率遠超過 20%（close=200）才會被擋，證明預設值真的是「開啟」而不是「關閉」
+      const blocked = evaluatePyramid(bars(spikeCloses(200)), legacyConfig, prev);
+      expect(blocked.signal.action).toBe('hold');
+      expect(blocked.signal.reason).toContain('乖離率');
     });
   });
 

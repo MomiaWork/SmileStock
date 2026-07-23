@@ -27,6 +27,8 @@ const baseParams: PyramidBacktestParams = {
   stopBufferPct: 4,
   trailMaBufferPct: 2,
   addTriggerPct: 5,
+  biasFilterEnabled: false,
+  biasLimitPct: 20,
 };
 
 describe('runPyramidBacktest', () => {

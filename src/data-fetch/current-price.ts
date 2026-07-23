@@ -26,7 +26,7 @@ function computeChange(
 }
 
 /**
- * 取得多檔股票的「目前價格」顯示資料：優先用 fetchRealtimeQuotes 的盤中最新成交價，
+ * 取得多檔標的的「目前價格」顯示資料：優先用 fetchRealtimeQuotes 的盤中最新成交價，
  * 該端點失敗或某檔暫時沒有成交價時，fallback 用 price_history 裡最新一筆每日收盤價
  * （策略引擎在用的資料源，一定存在只是可能是前一交易日的）。純供畫面顯示，不寫入 DB。
  */

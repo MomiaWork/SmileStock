@@ -24,6 +24,8 @@ const basePyramidConfig: PyramidConfig = {
   stopBufferPct: 4,
   trailMaBufferPct: 2,
   addTriggerPct: 5,
+  biasFilterEnabled: false,
+  biasLimitPct: 20,
 };
 
 const gridConfig: { type: 'grid'; params: GridStrategyConfig } = {

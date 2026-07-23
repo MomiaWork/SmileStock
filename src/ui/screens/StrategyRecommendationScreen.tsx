@@ -1,9 +1,16 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fetchExtendedHistoricalQuotes, fetchRealtimeQuotes } from '../../data-fetch/twse-client';
+import { getDb } from '../../db/schema';
+import { addWatchlistItemWithStrategies } from '../../db/watchlist-onboarding';
 import { useI18n } from '../../i18n';
+import type { GridStrategyConfig } from '../../strategy-engine/grid-strategy';
+import {
+  DEFAULT_PYRAMID_PARAMS,
+  type PyramidConfig,
+} from '../../strategy-engine/pyramid-state-machine';
 import type {
   PyramidWeightsProfile,
   RecommendationResult,
@@ -11,6 +18,7 @@ import type {
 } from '../../strategy-engine/strategy-recommender';
 import {
   PYRAMID_WEIGHTS_OPTIONS,
+  pyramidWeightsForProfile,
   recommendStrategyParams,
 } from '../../strategy-engine/strategy-recommender';
 import type { PricePoint } from '../../strategy-engine/types';
@@ -38,7 +46,9 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
     high: strings.strategyRecommendation.riskLevelHigh,
   };
   const [stockCode, setStockCode] = useState('');
+  const [budget, setBudget] = useState('100000');
   const [analyzing, setAnalyzing] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [analysis, setAnalysis] = useState<RecommendationResult | null>(null);
   const [analyzedCode, setAnalyzedCode] = useState('');
   const [analyzedName, setAnalyzedName] = useState('');
@@ -69,7 +79,7 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
         );
       }
       setAnalyzedCode(code);
-      // fetchExtendedHistoricalQuotes 用的月資料端點沒有股票名稱欄位（name 只是代號的佔位值），
+      // fetchExtendedHistoricalQuotes 用的月資料端點沒有標的名稱欄位（name 只是代號的佔位值），
       // 要拿到真正的中文名稱得另外查即時報價端點；查不到就留空，不要顯示代號充當名稱
       const [realtimeQuote] = await fetchRealtimeQuotes([code]).catch(() => []);
       setAnalyzedName(realtimeQuote?.name ?? '');
@@ -84,20 +94,97 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
     }
   };
 
+  const comboWeightsProfile = (): PyramidWeightsProfile | undefined => {
+    if (!analysis?.bestPyramid) return undefined;
+    const weightsKey = analysis.bestPyramid.params.weights.join(',');
+    if (weightsKey === PYRAMID_WEIGHTS_OPTIONS[0].join(',')) return 'equal';
+    if (weightsKey === PYRAMID_WEIGHTS_OPTIONS[2].join(',')) return 'decreasing';
+    return 'pyramid';
+  };
+
   /**
-   * 一鍵套用「最佳網格＋最佳金字塔」整組參數：兩個策略會一起啟用，每天由市場狀態
-   * 路由決定聽誰的，使用者不用自己預測未來是盤整還是趨勢、也不用二選一。
+   * 直接套用「最佳網格＋最佳金字塔」整組參數並存檔回首頁：兩個策略會一起啟用，每天由
+   * 市場狀態路由決定聽誰的，使用者不用自己預測未來是盤整還是趨勢、也不用二選一。
+   * 不經過新增表單——多策略並行已經是既定選擇，不需要使用者再看一次細項才能確認；
+   * 想調整細節的人改走 handleEditCombo。
    */
-  const handleApplyCombo = (): void => {
+  const handleApplyCombo = async (): Promise<void> => {
     if (!analysis?.bestGrid || !analysis?.bestPyramid) return;
-    const weightsProfile: PyramidWeightsProfile =
-      analysis.bestPyramid.params.weights.join(',') === PYRAMID_WEIGHTS_OPTIONS[0].join(',')
-        ? 'equal'
-        : 'pyramid';
+    const weightsProfile = comboWeightsProfile();
+    if (!weightsProfile) return;
+
+    const budgetNum = Number(budget);
+    if (!Number.isFinite(budgetNum) || budgetNum <= 0) {
+      Alert.alert(strings.strategyRecommendation.invalidBudget);
+      return;
+    }
+
+    setApplying(true);
+    try {
+      const [quote] = await fetchRealtimeQuotes([analyzedCode]);
+      const price = quote?.lastPrice ?? quote?.previousClose;
+      if (price === undefined || price === null) {
+        Alert.alert(
+          strings.strategyRecommendation.priceNotFoundTitle,
+          strings.strategyRecommendation.priceNotFoundMessage(analyzedCode),
+        );
+        return;
+      }
+
+      const gridConfig: GridStrategyConfig = {
+        anchorPrice: price,
+        budget: budgetNum,
+        spacingPercent: analysis.bestGrid.params.spacingPercent,
+        tierCount: analysis.bestGrid.params.tierCount,
+      };
+      const pyramidConfig: PyramidConfig = {
+        ...DEFAULT_PYRAMID_PARAMS,
+        entryPrice: price,
+        budget: budgetNum,
+        weights: pyramidWeightsForProfile(weightsProfile),
+        addTriggerPct: analysis.bestPyramid.params.addTriggerPct,
+      };
+
+      const db = await getDb();
+      const { backfillError } = await addWatchlistItemWithStrategies(db, {
+        item: {
+          stockCode: analyzedCode,
+          stockName: analyzedName || analyzedCode,
+          budget: budgetNum,
+          entryConfirmEnabled: analysis.bestGrid.params.momentumConfirmEnabled,
+        },
+        grid: gridConfig,
+        pyramid: pyramidConfig,
+      });
+      if (backfillError) {
+        Alert.alert(
+          strings.watchlistForm.backfillFailedTitle,
+          `${backfillError.message}${strings.watchlistForm.backfillFailedSuffix}`,
+        );
+      }
+      navigation.popToTop();
+    } catch (err) {
+      Alert.alert(
+        strings.strategyRecommendation.applyFailedTitle,
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  /** 想在存檔前調整細項（錨定價、查價間隔等）的人，改走原本的新增表單預填流程 */
+  const handleEditCombo = (): void => {
+    if (!analysis?.bestGrid || !analysis?.bestPyramid) return;
+    const weightsProfile = comboWeightsProfile();
+    if (!weightsProfile) return;
+    const budgetNum = Number(budget);
+
     navigation.navigate('WatchlistForm', {
       prefill: {
         stockCode: analyzedCode,
         stockName: analyzedName,
+        budget: Number.isFinite(budgetNum) && budgetNum > 0 ? budgetNum : undefined,
         grid: {
           spacingPercent: analysis.bestGrid.params.spacingPercent,
           tierCount: analysis.bestGrid.params.tierCount,
@@ -124,6 +211,12 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
           onChangeText={setStockCode}
           autoCapitalize="characters"
         />
+        <InputRow
+          label={strings.strategyRecommendation.fieldBudget}
+          value={budget}
+          onChangeText={setBudget}
+          keyboardType="numeric"
+        />
       </Section>
       <View style={styles.analyzeButtonWrap}>
         <PrimaryButton
@@ -133,136 +226,86 @@ export default function StrategyRecommendationScreen({ navigation }: Props): Rea
         />
       </View>
 
-      {analysis !== null && (
+      {analysis !== null && analysis.bestGrid && analysis.bestPyramid && (
         <>
-          {analysis.bestGrid && analysis.bestPyramid && (
-            <>
-              <Text style={styles.sectionTitle}>
-                {strings.strategyRecommendation.comboSectionTitle}
-              </Text>
-              <View style={styles.card}>
-                <View style={styles.cardBody}>
-                  <View style={styles.tagRow}>
-                    <Text style={styles.typeTagText}>
-                      {strings.strategyRecommendation.strategyTypeGrid}
-                    </Text>
-                    <Text style={[styles.riskTagText, riskTagStyles[analysis.bestGrid.riskLevel]]}>
-                      {strings.strategyRecommendation.riskLevelLabel(
-                        riskLevelText[analysis.bestGrid.riskLevel],
-                      )}
-                    </Text>
-                  </View>
-                  <Text style={styles.resultTitle}>
-                    {strings.strategyRecommendation.resultLine1(
-                      analysis.bestGrid.params.spacingPercent,
-                      analysis.bestGrid.params.tierCount,
-                      analysis.bestGrid.params.momentumConfirmEnabled
-                        ? strings.strategyRecommendation.filterOn
-                        : strings.strategyRecommendation.filterOff,
-                    )}
-                  </Text>
-                  <Text style={styles.resultMetrics}>
-                    {strings.strategyRecommendation.resultLine2(
-                      analysis.bestGrid.result.totalReturnPercent.toFixed(1),
-                      analysis.bestGrid.result.maxDrawdownPercent.toFixed(1),
-                      analysis.bestGrid.result.tradeCount,
-                    )}
-                  </Text>
-                  <View style={[styles.tagRow, styles.comboSecondTag]}>
-                    <Text style={styles.typeTagText}>
-                      {strings.strategyRecommendation.strategyTypePyramid}
-                    </Text>
-                    <Text
-                      style={[styles.riskTagText, riskTagStyles[analysis.bestPyramid.riskLevel]]}
-                    >
-                      {strings.strategyRecommendation.riskLevelLabel(
-                        riskLevelText[analysis.bestPyramid.riskLevel],
-                      )}
-                    </Text>
-                  </View>
-                  <Text style={styles.resultTitle}>
-                    {strings.strategyRecommendation.pyramidResultLine1(
-                      analysis.bestPyramid.params.weights.join(':'),
-                      analysis.bestPyramid.params.addTriggerPct,
-                    )}
-                  </Text>
-                  <Text style={styles.resultMetrics}>
-                    {strings.strategyRecommendation.resultLine2(
-                      analysis.bestPyramid.result.totalReturnPercent.toFixed(1),
-                      analysis.bestPyramid.result.maxDrawdownPercent.toFixed(1),
-                      analysis.bestPyramid.result.tradeCount,
-                    )}
-                  </Text>
-                  <PrimaryButton
-                    title={strings.strategyRecommendation.applyCombo}
-                    onPress={handleApplyCombo}
-                  />
-                </View>
-              </View>
-              <Text style={styles.disclaimerText}>
-                {strings.strategyRecommendation.comboFooter}
-              </Text>
-            </>
-          )}
-
           <Text style={styles.sectionTitle}>
-            {strings.strategyRecommendation.resultsSectionTitle}
+            {strings.strategyRecommendation.comboSectionTitle}
           </Text>
-          <Text style={styles.disclaimerText}>
-            {strings.strategyRecommendation.disclaimer(analyzedCode || stockCode, BACKTEST_MONTHS)}
-          </Text>
-          <Text style={styles.benchmarkText}>
-            {strings.strategyRecommendation.buyHoldLabel(
-              analysis.buyHoldReturnPercent.toFixed(1),
-            )}
-          </Text>
-          {analysis.recommendations.length === 0 && (
-            <Text style={styles.emptyText}>{strings.strategyRecommendation.noResults}</Text>
-          )}
-          {analysis.recommendations.map((item, index) => (
-            <View key={index} style={styles.card}>
-              <View style={styles.rankBadge}>
-                <Text style={styles.rankBadgeText}>{index + 1}</Text>
-              </View>
-              <View style={styles.cardBody}>
-                <View style={styles.tagRow}>
-                  <Text style={styles.typeTagText}>
-                    {item.strategyType === 'grid'
-                      ? strings.strategyRecommendation.strategyTypeGrid
-                      : strings.strategyRecommendation.strategyTypePyramid}
-                  </Text>
-                  <Text style={[styles.riskTagText, riskTagStyles[item.riskLevel]]}>
-                    {strings.strategyRecommendation.riskLevelLabel(riskLevelText[item.riskLevel])}
-                  </Text>
-                </View>
-                {item.strategyType === 'grid' ? (
-                  <Text style={styles.resultTitle}>
-                    {strings.strategyRecommendation.resultLine1(
-                      item.params.spacingPercent,
-                      item.params.tierCount,
-                      item.params.momentumConfirmEnabled
-                        ? strings.strategyRecommendation.filterOn
-                        : strings.strategyRecommendation.filterOff,
-                    )}
-                  </Text>
-                ) : (
-                  <Text style={styles.resultTitle}>
-                    {strings.strategyRecommendation.pyramidResultLine1(
-                      item.params.weights.join(':'),
-                      item.params.addTriggerPct,
-                    )}
-                  </Text>
-                )}
-                <Text style={styles.resultMetrics}>
-                  {strings.strategyRecommendation.resultLine2(
-                    item.result.totalReturnPercent.toFixed(1),
-                    item.result.maxDrawdownPercent.toFixed(1),
-                    item.result.tradeCount,
+          <View style={styles.card}>
+            <View style={styles.cardBody}>
+              <View style={styles.tagRow}>
+                <Text style={styles.typeTagText}>
+                  {strings.strategyRecommendation.strategyTypeGrid}
+                </Text>
+                <Text style={[styles.riskTagText, riskTagStyles[analysis.bestGrid.riskLevel]]}>
+                  {strings.strategyRecommendation.riskLevelLabel(
+                    riskLevelText[analysis.bestGrid.riskLevel],
                   )}
                 </Text>
               </View>
+              <Text style={styles.resultTitle}>
+                {strings.strategyRecommendation.resultLine1(
+                  analysis.bestGrid.params.spacingPercent,
+                  analysis.bestGrid.params.tierCount,
+                  analysis.bestGrid.params.momentumConfirmEnabled
+                    ? strings.strategyRecommendation.filterOn
+                    : strings.strategyRecommendation.filterOff,
+                )}
+              </Text>
+              <Text style={styles.resultMetrics}>
+                {strings.strategyRecommendation.resultLine2(
+                  analysis.bestGrid.result.totalReturnPercent.toFixed(1),
+                  analysis.bestGrid.result.maxDrawdownPercent.toFixed(1),
+                  analysis.bestGrid.result.tradeCount,
+                )}
+              </Text>
+              <View style={[styles.tagRow, styles.comboSecondTag]}>
+                <Text style={styles.typeTagText}>
+                  {strings.strategyRecommendation.strategyTypePyramid}
+                </Text>
+                <Text style={[styles.riskTagText, riskTagStyles[analysis.bestPyramid.riskLevel]]}>
+                  {strings.strategyRecommendation.riskLevelLabel(
+                    riskLevelText[analysis.bestPyramid.riskLevel],
+                  )}
+                </Text>
+              </View>
+              <Text style={styles.resultTitle}>
+                {strings.strategyRecommendation.pyramidResultLine1(
+                  analysis.bestPyramid.params.weights.join(':'),
+                  analysis.bestPyramid.params.addTriggerPct,
+                )}
+              </Text>
+              <Text style={styles.resultMetrics}>
+                {strings.strategyRecommendation.resultLine2(
+                  analysis.bestPyramid.result.totalReturnPercent.toFixed(1),
+                  analysis.bestPyramid.result.maxDrawdownPercent.toFixed(1),
+                  analysis.bestPyramid.result.tradeCount,
+                )}
+              </Text>
+              <Text style={styles.benchmarkText}>
+                {strings.strategyRecommendation.buyHoldLabel(
+                  analysis.buyHoldReturnPercent.toFixed(1),
+                )}
+              </Text>
+              <PrimaryButton
+                title={strings.strategyRecommendation.applyCombo}
+                onPress={() => void handleApplyCombo()}
+                loading={applying}
+              />
+              <Pressable
+                hitSlop={8}
+                onPress={handleEditCombo}
+                disabled={applying}
+                style={styles.editLink}
+              >
+                <Text style={styles.editLinkText}>{strings.strategyRecommendation.editCombo}</Text>
+              </Pressable>
             </View>
-          ))}
+          </View>
+          <Text style={styles.disclaimerText}>{strings.strategyRecommendation.comboFooter}</Text>
+          <Text style={styles.disclaimerText}>
+            {strings.strategyRecommendation.disclaimer(analyzedCode || stockCode, BACKTEST_MONTHS)}
+          </Text>
         </>
       )}
     </ScrollView>
@@ -296,11 +339,6 @@ const styles = StyleSheet.create({
   benchmarkText: {
     ...typography.footnote,
     fontWeight: '600',
-    marginBottom: spacing.md,
-    marginHorizontal: spacing.xs,
-  },
-  emptyText: {
-    ...typography.footnote,
   },
   tagRow: {
     flexDirection: 'row',
@@ -332,19 +370,6 @@ const styles = StyleSheet.create({
     elevation: 1,
     gap: spacing.md,
   },
-  rankBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: radius.pill,
-    backgroundColor: colors.tint,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rankBadgeText: {
-    ...typography.footnote,
-    color: '#fff',
-    fontWeight: '700',
-  },
   cardBody: {
     flex: 1,
     gap: spacing.sm,
@@ -355,5 +380,14 @@ const styles = StyleSheet.create({
   },
   resultMetrics: {
     ...typography.footnote,
+  },
+  editLink: {
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  editLinkText: {
+    ...typography.footnote,
+    color: colors.tint,
+    fontWeight: '600',
   },
 });

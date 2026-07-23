@@ -6,14 +6,16 @@
 export interface WatchlistFormPrefill {
   stockCode?: string;
   stockName?: string;
+  budget?: number;
   grid?: {
     spacingPercent: number;
     tierCount: number;
     entryConfirmEnabled: boolean;
   };
   pyramid?: {
-    /** 對應「策略建議」畫面回測用的兩組加碼權重比例：等權重 [1,1,1,1] 或金字塔式 [1,1.5,2,2.5] */
-    weightsProfile: 'equal' | 'pyramid';
+    /** 對應「策略建議」畫面回測用的三組加碼權重比例：等權重 [1,1,1,1]、金字塔式
+     * [1,1.5,2,2.5]（越漲加越多），或遞減式 [2.5,2,1.5,1]（越漲加越少） */
+    weightsProfile: 'equal' | 'pyramid' | 'decreasing';
     addTriggerPct: number;
   };
 }

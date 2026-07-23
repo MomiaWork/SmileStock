@@ -4,7 +4,7 @@ import { upsertPriceHistory } from '../db/price-history-repo';
 import { fetchDailyQuotes, fetchHistoricalDailyQuotes, type TwseDailyQuote } from './twse-client';
 
 /**
- * 抓取指定股票代號的最新收盤價並寫入 price_history（同一天重複執行為 upsert）。
+ * 抓取指定標的代號的最新收盤價並寫入 price_history（同一天重複執行為 upsert）。
  */
 export async function syncPriceHistory(
   db: SQLiteDatabase,
@@ -30,7 +30,7 @@ export async function syncPriceHistory(
 const DEFAULT_BACKFILL_TRADING_DAYS = 21;
 
 /**
- * 新增股票時一次回補歷史收盤價（預設抓到至少 21 筆，涵蓋 RSI(14)/MA(20) 預設參數所需天數），
+ * 新增標的時一次回補歷史收盤價（預設抓到至少 21 筆，涵蓋 RSI(14)/MA(20) 預設參數所需天數），
  * 不用等每日同步逐筆累積好幾週。
  */
 export async function backfillPriceHistory(

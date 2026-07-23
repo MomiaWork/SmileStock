@@ -109,9 +109,9 @@ src/
 
 ## 資料模型（SQLite）
 
-- `watchlist`：股票代號、預算、查價間隔（可個別覆蓋全域設定）、啟用中的策略清單
+- `watchlist`：標的代號、預算、查價間隔（可個別覆蓋全域設定）、啟用中的策略清單
 - `strategy_config`：所屬 watchlist_id、策略類型（grid/rsi/ma_cross）、該策略專屬參數（JSON）
-- `price_history`：股票代號、日期、收盤價、最高、最低、成交量（RSI/均線計算依據）
+- `price_history`：標的代號、日期、收盤價、最高、最低、成交量（RSI/均線計算依據）
 - `grid_tiers`：網格策略專用，所屬 strategy_config_id、檔位序號、觸發價、狀態
 - `pyramid_state`（**待新增**，金字塔狀態機策略接進 DB/UI 時建）：所屬
   strategy_config_id、目前狀態、候選狀態與天數、已加碼級數、上次加碼價、
@@ -145,7 +145,7 @@ src/
 - **背景任務頻率不可控**，`expo-background-task`（原本規劃的 `expo-background-fetch`
   在這個 SDK 版本已標記 deprecated，已改用官方建議的替代套件）只是嘗試向系統「請求」
   執行，不是排程保證。相關實測結果見下方「背景任務實測頻率」
-- **RSI / 均線需要足夠的歷史資料才有意義**，新增股票的前幾天策略引擎應回傳「資料不足」而非
+- **RSI / 均線需要足夠的歷史資料才有意義**，新增標的的前幾天策略引擎應回傳「資料不足」而非
   硬算出誤導性訊號
 - **不要把任何 API key 或憑證寫死在程式碼**，TWSE OpenAPI 目前不需要 key，但若未來換成
   付費資料源，一律用 EAS Secrets 或 `.env`（並加進 `.gitignore`）

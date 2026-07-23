@@ -24,7 +24,7 @@ export interface StockExportSummary {
 }
 
 /**
- * 讀 watchlist -> 對每檔股票的每個啟用策略呼叫 engine.ts，組成匯出用的摘要資料。
+ * 讀 watchlist -> 對每檔標的的每個啟用策略呼叫 engine.ts，組成匯出用的摘要資料。
  * 併入盤中最新報價後才算策略訊號，避免匯出給 Claude 分析的「最新價格」卡在
  * price_history 最新一筆（可能是前一交易日）的收盤價。
  */
@@ -84,7 +84,7 @@ export function formatExportText(
   lines.push('');
 
   if (summaries.length === 0) {
-    lines.push('（目前沒有監控任何股票）');
+    lines.push('（目前沒有監控任何標的）');
     return lines.join('\n');
   }
 
@@ -149,8 +149,8 @@ export async function shareStrategyExport(db: SQLiteDatabase): Promise<void> {
  * 要求純文字回覆，捷徑用「顯示結果」就能直接讀，不需要 Markdown 轉 RTF。
  */
 const CLAUDE_PROMPT_HEADER = [
-  '你是台股投資顧問。以下是我的持股策略狀態，請針對每檔股票給出「今日建議動作」與理由，最後給整體資產配置提醒。',
-  '回覆請用純文字，不要使用任何 Markdown 符號（不要 ** 與 ##），用換行與「•」條列，每檔股票之間空一行，回覆精簡。',
+  '你是台股投資顧問。以下是我的持股策略狀態，請針對每檔標的給出「今日建議動作」與理由，最後給整體資產配置提醒。',
+  '回覆請用純文字，不要使用任何 Markdown 符號（不要 ** 與 ##），用換行與「•」條列，每檔標的之間空一行，回覆精簡。',
   '',
 ].join('\n');
 

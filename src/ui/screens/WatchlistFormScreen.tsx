@@ -2,13 +2,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { backfillPriceHistory } from '../../data-fetch/price-history-sync';
 import { fetchRealtimeQuotes } from '../../data-fetch/twse-client';
 import { getDb } from '../../db/schema';
 import { DEFAULT_GLOBAL_INTERVAL_SEC, getGlobalDefaultIntervalSec } from '../../db/settings-repo';
+import { addWatchlistItemWithStrategies } from '../../db/watchlist-onboarding';
 import type { PersistedStrategyType } from '../../db/watchlist-repo';
 import {
-  addWatchlistItem,
   getAllStrategyConfigs,
   getWatchlistItem,
   replaceStrategyConfigs,
@@ -17,10 +16,7 @@ import {
 import { useI18n } from '../../i18n';
 import type { GridStrategyConfig } from '../../strategy-engine/grid-strategy';
 import type { PyramidConfig } from '../../strategy-engine/pyramid-state-machine';
-import {
-  DEFAULT_PYRAMID_PARAMS,
-  minRequiredBars,
-} from '../../strategy-engine/pyramid-state-machine';
+import { DEFAULT_PYRAMID_PARAMS } from '../../strategy-engine/pyramid-state-machine';
 import {
   PYRAMID_ADD_TRIGGER_OPTIONS,
   PYRAMID_WEIGHTS_OPTIONS,
@@ -47,14 +43,16 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
   const isEditing = watchlistId !== undefined;
   // 從「策略建議」畫面帶參數過來時預填——只在新增（非編輯）情境套用。
   // 錨定價/進場價不從建議帶入（建議是用回測區間的歷史價格算的，跟使用者現在
-  // 新增股票的當下價格無關），由下方的自動帶入 effect 用即時報價填。
+  // 新增標的的當下價格無關），由下方的自動帶入 effect 用即時報價填。
   const prefill = isEditing ? undefined : route.params?.prefill;
   const gridPrefill = prefill?.grid;
   const pyramidPrefill = prefill?.pyramid;
 
   const [stockCode, setStockCode] = useState(prefill?.stockCode ?? '');
   const [stockName, setStockName] = useState(prefill?.stockName ?? '');
-  const [budget, setBudget] = useState('100000');
+  const [budget, setBudget] = useState(
+    prefill?.budget !== undefined ? String(prefill.budget) : '100000',
+  );
   const [intervalSec, setIntervalSec] = useState(String(DEFAULT_GLOBAL_INTERVAL_SEC));
 
   // 新增時網格與金字塔預設都啟用：事先無法知道未來走勢是盤整還是趨勢，兩策略同時
@@ -71,8 +69,10 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
     gridPrefill ? String(gridPrefill.tierCount) : '5',
   );
 
+  // 預設開啟：網格觸發時多一道動能確認，避免把死貓跳反彈誤判成止穩訊號進場
+  // （見進場建議 entry-advisor.ts／動能濾網 momentum-confirm.ts 的說明）
   const [entryConfirmEnabled, setEntryConfirmEnabled] = useState(
-    gridPrefill?.entryConfirmEnabled ?? false,
+    gridPrefill?.entryConfirmEnabled ?? true,
   );
 
   const [pyramidEnabled, setPyramidEnabled] = useState(
@@ -99,7 +99,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
     });
   }, [navigation, isEditing, strings]);
 
-  // 新增股票時查價間隔直接帶入目前的全域預設值，不留空——使用者若沒特別調整過
+  // 新增標的時查價間隔直接帶入目前的全域預設值，不留空——使用者若沒特別調整過
   // 全域預設，state 初始值（DEFAULT_GLOBAL_INTERVAL_SEC）已經是對的，這裡只在
   // 使用者調整過全域預設時，用 DB 裡實際的值覆寫過去
   useEffect(() => {
@@ -142,8 +142,13 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
           const p = config.params as PyramidConfig;
           setPyramidEnabled(config.enabled);
           setPyramidEntryPrice(String(p.entryPrice));
+          const weightsKey = p.weights.join(',');
           setPyramidWeightsProfile(
-            p.weights.join(',') === PYRAMID_WEIGHTS_OPTIONS[0].join(',') ? 'equal' : 'pyramid',
+            weightsKey === PYRAMID_WEIGHTS_OPTIONS[0].join(',')
+              ? 'equal'
+              : weightsKey === PYRAMID_WEIGHTS_OPTIONS[2].join(',')
+                ? 'decreasing'
+                : 'pyramid',
           );
           setPyramidAddTriggerPct(p.addTriggerPct);
           setHadPyramidBeforeEdit(true);
@@ -309,56 +314,45 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       weights: pyramidWeightsForProfile(pyramidWeightsProfile),
       addTriggerPct: pyramidAddTriggerPct,
     };
+    const gridConfig: GridStrategyConfig = {
+      anchorPrice: gridAnchorPriceNum,
+      budget: budgetNum,
+      spacingPercent: gridSpacingPercentNum,
+      tierCount: gridTierCountNum,
+    };
 
     try {
-      const id = isEditing ? watchlistId : await addWatchlistItem(db, watchlistPayload);
       if (isEditing) {
         await updateWatchlistItem(db, watchlistId, watchlistPayload);
+        const configs: { type: PersistedStrategyType; params: unknown; enabled: boolean }[] = [];
+        if (gridEnabled) {
+          configs.push({ type: 'grid', enabled: true, params: gridConfig });
+        }
+        if (pyramidEnabled) {
+          configs.push({ type: 'pyramid', enabled: true, params: pyramidConfig });
+        }
+        await replaceStrategyConfigs(db, watchlistId, configs);
+        navigation.goBack();
       } else {
-        // 金字塔狀態機要判斷市場狀態至少需要 minRequiredBars 筆資料（預設看 60 日均線），
-        // 遠超過網格/RSI/均線交叉的 21 筆預設回補量，沒開金字塔就不用多抓
-        const minTradingDays = pyramidEnabled
-          ? Math.max(21, minRequiredBars(pyramidConfig))
-          : undefined;
-        try {
-          await backfillPriceHistory(db, watchlistPayload.stockCode, minTradingDays);
-        } catch (err) {
-          // 回補歷史資料失敗不擋新增股票，之後每日同步仍會逐筆累積
+        const { backfillError } = await addWatchlistItemWithStrategies(db, {
+          item: watchlistPayload,
+          grid: gridEnabled ? gridConfig : undefined,
+          pyramid: pyramidEnabled ? pyramidConfig : undefined,
+        });
+        if (backfillError) {
+          // 回補歷史資料失敗不擋新增標的，之後每日同步仍會逐筆累積
           Alert.alert(
             strings.watchlistForm.backfillFailedTitle,
-            `${err instanceof Error ? err.message : String(err)}${strings.watchlistForm.backfillFailedSuffix}`,
+            `${backfillError.message}${strings.watchlistForm.backfillFailedSuffix}`,
           );
         }
-      }
-
-      const configs: { type: PersistedStrategyType; params: unknown; enabled: boolean }[] = [];
-      if (gridEnabled) {
-        configs.push({
-          type: 'grid',
-          enabled: true,
-          params: {
-            anchorPrice: gridAnchorPriceNum,
-            budget: budgetNum,
-            spacingPercent: gridSpacingPercentNum,
-            tierCount: gridTierCountNum,
-          } satisfies GridStrategyConfig,
-        });
-      }
-      if (pyramidEnabled) {
-        configs.push({
-          type: 'pyramid',
-          enabled: true,
-          params: pyramidConfig satisfies PyramidConfig,
-        });
-      }
-
-      await replaceStrategyConfigs(db, id, configs);
-      // 從「策略建議」套用設定進來的新增流程，儲存完直接回首頁股票清單，
-      // 不要停在中間的策略建議頁（那一頁的分析結果跟剛新增的這筆股票已經無關）
-      if (prefill !== undefined) {
-        navigation.popToTop();
-      } else {
-        navigation.goBack();
+        // 從「策略建議」套用設定進來的新增流程，儲存完直接回首頁標的清單，
+        // 不要停在中間的策略建議頁（那一頁的分析結果跟剛新增的這筆標的已經無關）
+        if (prefill !== undefined) {
+          navigation.popToTop();
+        } else {
+          navigation.goBack();
+        }
       }
     } catch (err) {
       Alert.alert(
@@ -490,6 +484,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
                     options={[
                       { value: 'equal', label: strings.watchlistForm.addOnStyleEqual },
                       { value: 'pyramid', label: strings.watchlistForm.addOnStylePyramid },
+                      { value: 'decreasing', label: strings.watchlistForm.addOnStyleDecreasing },
                     ]}
                     value={pyramidWeightsProfile}
                     onChange={setPyramidWeightsProfile}

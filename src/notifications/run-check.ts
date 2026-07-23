@@ -13,8 +13,8 @@ import type { PricePoint } from '../strategy-engine/types';
 import { notifyIfNew } from './local-notification';
 
 /**
- * 每檔股票一筆檢查結果。策略層面「聽網格還是聽金字塔」已經由 routeRecommendation
- * 在這裡收斂成單一建議，呼叫端（清單頁的立即檢查、背景任務）只需要知道每檔股票
+ * 每檔標的一筆檢查結果。策略層面「聽網格還是聽金字塔」已經由 routeRecommendation
+ * 在這裡收斂成單一建議，呼叫端（清單頁的立即檢查、背景任務）只需要知道每檔標的
  * 最後的建議與是否發了通知，不用再理解個別策略的訊號形狀。
  */
 export interface CheckResultItem {
@@ -53,11 +53,11 @@ function shouldNotify(rec: RoutedRecommendation): boolean {
 }
 
 /**
- * 讀 watchlist -> 對每檔股票把啟用中的網格/金字塔設定交給 routeRecommendation 收斂成
+ * 讀 watchlist -> 對每檔標的把啟用中的網格/金字塔設定交給 routeRecommendation 收斂成
  * 單一建議 -> 值得行動的建議寫 notification_log 並發本機通知。Phase 4 的背景任務會
  * 重用這個函式。
  *
- * 同一檔股票即使同時啟用網格與金字塔，也只會產生一則通知——跟個股詳情頁顯示的
+ * 同一檔標的即使同時啟用網格與金字塔，也只會產生一則通知——跟個股詳情頁顯示的
  * 「今天該做的事」是同一套路由邏輯，通知說買、畫面說凍結這種矛盾不會發生。
  *
  * 策略判斷依 price_history 併入盤中最新報價後的結果，不能只看 price_history 最新一筆
@@ -126,7 +126,7 @@ export async function checkWatchlistAndNotify(db: SQLiteDatabase): Promise<Check
           body: recommendation.reason,
         });
       } catch (err) {
-        // 單一訊號發送失敗（例如系統通知一時失敗）不該讓其他股票的檢查也被中斷
+        // 單一訊號發送失敗（例如系統通知一時失敗）不該讓其他標的的檢查也被中斷
         notifyError = err instanceof Error ? err.message : String(err);
       }
     }

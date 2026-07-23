@@ -39,7 +39,7 @@ export interface NotificationHistoryEntry {
   sentAt: string;
 }
 
-/** 個股詳情頁用：這檔股票過去所有已發送過的觸發紀錄，最新的在前面 */
+/** 個股詳情頁用：這檔標的過去所有已發送過的觸發紀錄，最新的在前面 */
 export async function getNotificationHistory(
   db: SQLiteDatabase,
   watchlistId: number,

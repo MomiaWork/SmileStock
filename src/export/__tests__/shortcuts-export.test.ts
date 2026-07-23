@@ -55,7 +55,7 @@ beforeEach(() => {
 });
 
 describe('buildExportSummary', () => {
-  test('組出每檔股票的最新價格與各策略的目前狀態', async () => {
+  test('組出每檔標的的最新價格與各策略的目前狀態', async () => {
     mockGetWatchlist.mockResolvedValue([
       {
         id: 1,
@@ -136,12 +136,12 @@ describe('buildExportSummary', () => {
 });
 
 describe('formatExportText', () => {
-  test('沒有任何股票時輸出明確的空清單訊息', () => {
+  test('沒有任何標的時輸出明確的空清單訊息', () => {
     const text = formatExportText([], new Date('2026-07-21T00:00:00.000Z'));
-    expect(text).toContain('目前沒有監控任何股票');
+    expect(text).toContain('目前沒有監控任何標的');
   });
 
-  test('內容包含股票代號、名稱、價格與每個策略的觸發狀態', () => {
+  test('內容包含標的代號、名稱、價格與每個策略的觸發狀態', () => {
     const summaries: StockExportSummary[] = [
       {
         stockCode: '2330',
@@ -162,7 +162,7 @@ describe('formatExportText', () => {
 });
 
 describe('formatExportJson', () => {
-  test('輸出的是合法 JSON，且包含股票資料', () => {
+  test('輸出的是合法 JSON，且包含標的資料', () => {
     const summaries: StockExportSummary[] = [
       {
         stockCode: '2330',

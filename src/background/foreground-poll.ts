@@ -33,7 +33,7 @@ async function tick(defaultIntervalSec: number): Promise<void> {
 }
 
 /**
- * App 在前景時，依每檔股票各自設定的查價間隔（沒設定就用 defaultIntervalSec）
+ * App 在前景時，依每檔標的各自設定的查價間隔（沒設定就用 defaultIntervalSec）
  * 輪詢。比背景任務可靠，用來補償背景任務「盡力而為、不保證頻率」的不足。
  * App 進背景/被關閉後這個 setInterval 就不會再執行。
  */
@@ -57,7 +57,7 @@ export function isForegroundPollRunning(): boolean {
   return intervalHandle !== null;
 }
 
-/** 測試/除錯用：清掉每檔股票的「上次檢查時間」記憶，讓下一個 tick 全部視為到期 */
+/** 測試/除錯用：清掉每檔標的的「上次檢查時間」記憶，讓下一個 tick 全部視為到期 */
 export function resetForegroundPollState(): void {
   lastCheckedAtByCode.clear();
 }

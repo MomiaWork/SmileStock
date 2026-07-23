@@ -18,6 +18,8 @@ const config: PyramidConfig = {
   stopBufferPct: 4,
   trailMaBufferPct: 2.5,
   addTriggerPct: 5,
+  biasFilterEnabled: false,
+  biasLimitPct: 20,
 };
 
 function makeState(overrides: Partial<PyramidState>): PyramidState {
