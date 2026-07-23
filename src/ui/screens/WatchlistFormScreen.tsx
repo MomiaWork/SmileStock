@@ -17,7 +17,10 @@ import {
 import { useI18n } from '../../i18n';
 import type { GridStrategyConfig } from '../../strategy-engine/grid-strategy';
 import type { PyramidConfig } from '../../strategy-engine/pyramid-state-machine';
-import { DEFAULT_PYRAMID_PARAMS } from '../../strategy-engine/pyramid-state-machine';
+import {
+  DEFAULT_PYRAMID_PARAMS,
+  minRequiredBars,
+} from '../../strategy-engine/pyramid-state-machine';
 import {
   PYRAMID_ADD_TRIGGER_OPTIONS,
   PYRAMID_HARD_STOP_OPTIONS,
@@ -289,13 +292,27 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
       entryConfirmEnabled,
     };
 
+    const pyramidConfig: PyramidConfig = {
+      ...DEFAULT_PYRAMID_PARAMS,
+      entryPrice: pyramidEntryPriceNum,
+      budget: budgetNum,
+      weights: pyramidWeightsForProfile(pyramidWeightsProfile),
+      addTriggerPct: pyramidAddTriggerPct,
+      hardStopPct: pyramidHardStopPct,
+    };
+
     try {
       const id = isEditing ? watchlistId : await addWatchlistItem(db, watchlistPayload);
       if (isEditing) {
         await updateWatchlistItem(db, watchlistId, watchlistPayload);
       } else {
+        // 金字塔狀態機要判斷市場狀態至少需要 minRequiredBars 筆資料（預設看 60 日均線），
+        // 遠超過網格/RSI/均線交叉的 21 筆預設回補量，沒開金字塔就不用多抓
+        const minTradingDays = pyramidEnabled
+          ? Math.max(21, minRequiredBars(pyramidConfig))
+          : undefined;
         try {
-          await backfillPriceHistory(db, watchlistPayload.stockCode);
+          await backfillPriceHistory(db, watchlistPayload.stockCode, minTradingDays);
         } catch (err) {
           // 回補歷史資料失敗不擋新增股票，之後每日同步仍會逐筆累積
           Alert.alert(
@@ -322,14 +339,7 @@ export default function WatchlistFormScreen({ route, navigation }: Props): React
         configs.push({
           type: 'pyramid',
           enabled: true,
-          params: {
-            ...DEFAULT_PYRAMID_PARAMS,
-            entryPrice: pyramidEntryPriceNum,
-            budget: budgetNum,
-            weights: pyramidWeightsForProfile(pyramidWeightsProfile),
-            addTriggerPct: pyramidAddTriggerPct,
-            hardStopPct: pyramidHardStopPct,
-          } satisfies PyramidConfig,
+          params: pyramidConfig satisfies PyramidConfig,
         });
       }
 

@@ -259,7 +259,8 @@ function classifyRaw(history: PricePoint[], config: PyramidConfig): MarketState 
   return null;
 }
 
-function minRequiredBars(config: PyramidConfig): number {
+/** 匯出給新增股票時的歷史回補流程使用，確保一次補齊足夠天數，不用乾等每日累積 */
+export function minRequiredBars(config: PyramidConfig): number {
   // 長均線、盤整區間回看、ATR 前後兩期比較（含 TR 需要的前一日收盤）取最大
   return Math.max(config.maLong, config.consolidationLookback, config.atrPeriod * 2 + 1);
 }
