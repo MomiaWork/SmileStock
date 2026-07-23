@@ -22,11 +22,7 @@ export default function RootNavigator(): React.JSX.Element {
           contentStyle: { backgroundColor: colors.background },
         }}
       >
-        <Stack.Screen
-          name="Watchlist"
-          component={WatchlistScreen}
-          options={{ title: '股票清單', headerLargeTitle: true }}
-        />
+        <Stack.Screen name="Watchlist" component={WatchlistScreen} options={{ title: '清單' }} />
         <Stack.Screen name="WatchlistForm" component={WatchlistFormScreen} />
         <Stack.Screen name="StockDetail" component={StockDetailScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '設定' }} />

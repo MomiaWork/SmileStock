@@ -8,7 +8,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -184,11 +183,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.toolbar}
-      >
+      <View style={styles.toolbar}>
         <PillButton
           label="策略建議"
           icon="bulb-outline"
@@ -212,8 +207,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
           onPress={handleClaudeAnalyze}
           disabled={analyzing || items.length === 0}
         />
-      </ScrollView>
-
+      </View>
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.id)}
@@ -306,6 +300,8 @@ const styles = StyleSheet.create({
   },
   toolbar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
