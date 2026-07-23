@@ -1,6 +1,6 @@
 {
   "name": "smilestock",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
