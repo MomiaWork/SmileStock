@@ -20,7 +20,7 @@ export async function setGlobalDefaultIntervalSec(
 }
 
 const CLAUDE_SHORTCUT_NAME_KEY = 'claude_shortcut_name';
-export const DEFAULT_CLAUDE_SHORTCUT_NAME = '用Claude分析持股';
+export const DEFAULT_CLAUDE_SHORTCUT_NAME = 'AI資產分析';
 
 /** 「Claude 分析」按鈕要執行的 iOS 捷徑名稱，必須與捷徑 App 內的名稱完全一致 */
 export async function getClaudeShortcutName(db: SQLiteDatabase): Promise<string> {

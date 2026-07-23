@@ -35,6 +35,30 @@ npm test -- --coverage
 xcodebuild/fastlane 在 GitHub Actions macOS runner 上跑，見下方「待決策事項」），
 目前只有 lint/test 這條 CI 有接上，等 App 有實際功能可裝機測試時再決定並補上此區塊。
 
+## 常見問題
+
+**手機上開 App 跳出「No script URL provided」或類似的原生紅色錯誤畫面**
+
+這是 dev build 連不到 Metro（本機開發伺服器）才會出現的畫面，不是 App 的
+邏輯錯誤。最常見的原因是 Metro 綁在某個 terminal session 上，關掉那個
+terminal（或 VS Code 視窗）之後 Metro 就跟著被砍掉了，之後開 App 自然連不到。
+
+解法：用 `npm run metro:start` 啟動 Metro——這支 script 會用 `nohup` 讓
+Metro 常駐執行，不綁定在啟動它的 terminal 上，關掉 terminal 也不會把它
+砍掉，只有明確執行 `npm run metro:stop`、或整台電腦重開機/登出才會停止。
+開發時建議一開始先跑一次 `npm run metro:start`，之後就可以放著不管，
+用 `npm run metro:status` 確認是否還在跑。
+
+```bash
+npm run metro:start   # 啟動（已經在跑會直接告知，不會重複啟動）
+npm run metro:status  # 確認目前是否在跑
+npm run metro:stop    # 停止
+```
+
+跳出紅屏當下如果 Metro 其實已經在跑，通常是 App 啟動時間點剛好搶在
+Metro 就緒之前，點畫面上的「Reload JS」重新整理一次即可恢復，不用重新
+建置整個 App。
+
 ## 架構重點
 
 專案結構（managed Expo workflow，TypeScript）：

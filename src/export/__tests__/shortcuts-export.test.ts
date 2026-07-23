@@ -182,9 +182,9 @@ describe('formatExportJson', () => {
 
 describe('buildRunShortcutUrl', () => {
   test('捷徑名稱與文字都經過 URL 編碼，中文與換行不會弄壞 URL', () => {
-    const url = buildRunShortcutUrl('用Claude分析持股', '第一行\n## 2330 台積電');
+    const url = buildRunShortcutUrl('AI資產分析', '第一行\n## 2330 台積電');
     expect(url.startsWith('shortcuts://run-shortcut?name=')).toBe(true);
-    expect(url).toContain(`name=${encodeURIComponent('用Claude分析持股')}`);
+    expect(url).toContain(`name=${encodeURIComponent('AI資產分析')}`);
     expect(url).toContain('input=text');
     expect(url).toContain(`text=${encodeURIComponent('第一行\n## 2330 台積電')}`);
     expect(url).not.toContain('\n');
