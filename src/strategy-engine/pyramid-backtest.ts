@@ -50,7 +50,11 @@ export function runPyramidBacktest(
     const currentPrice = slice[slice.length - 1].close;
 
     if (!inPosition) {
-      const trialConfig: PyramidConfig = { ...params, entryPrice: currentPrice, budget: referenceBudget };
+      const trialConfig: PyramidConfig = {
+        ...params,
+        entryPrice: currentPrice,
+        budget: referenceBudget,
+      };
       const { signal, nextState } = evaluatePyramid(slice, trialConfig);
       const dataReady = signal.action !== 'insufficient_data';
       const trendConfirmed =

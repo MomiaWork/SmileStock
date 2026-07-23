@@ -50,11 +50,7 @@ const PYRAMID_ACTION_EMOJI: Record<'add' | 'exit', string> = {
   exit: '🔴',
 };
 
-function buildSignalKey(
-  strategyType: string,
-  advice: EntryAdvice,
-  history: PricePoint[],
-): string {
+function buildSignalKey(strategyType: string, advice: EntryAdvice, history: PricePoint[]): string {
   const latestDate = history.length > 0 ? history[history.length - 1].date : 'no-data';
   const tierPart = advice.tierIndex !== undefined ? `:tier${advice.tierIndex}` : '';
   return `${strategyType}:${advice.action}${tierPart}:${latestDate}`;

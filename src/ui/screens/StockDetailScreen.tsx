@@ -84,9 +84,9 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
 
     // 走勢圖、進場/出場建議、趨勢與策略狀態都要依「現在」判斷，不能卡在 price_history
     // 最新一筆可能是前一交易日（甚至今天背景同步還沒跑過）的收盤價，所以統一併入盤中最新報價
-    const currentPriceInfo = (
-      await getCurrentPrices(db, [watchlistItem.stockCode])
-    )[watchlistItem.stockCode];
+    const currentPriceInfo = (await getCurrentPrices(db, [watchlistItem.stockCode]))[
+      watchlistItem.stockCode
+    ];
     const adviceHistory = mergeLivePriceIntoHistory(priceHistory, currentPriceInfo ?? null);
     setHistory(adviceHistory);
 
@@ -156,7 +156,10 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
   useFocusEffect(
     useCallback(() => {
       reload().catch((err) => {
-        Alert.alert(strings.stockDetail.loadFailedTitle, err instanceof Error ? err.message : String(err));
+        Alert.alert(
+          strings.stockDetail.loadFailedTitle,
+          err instanceof Error ? err.message : String(err),
+        );
       });
     }, [reload, strings]),
   );
@@ -189,7 +192,10 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
       setTradeNote('');
       await reload();
     } catch (err) {
-      Alert.alert(strings.stockDetail.tradeFailedTitle, err instanceof Error ? err.message : String(err));
+      Alert.alert(
+        strings.stockDetail.tradeFailedTitle,
+        err instanceof Error ? err.message : String(err),
+      );
     } finally {
       setSavingTrade(false);
     }
@@ -265,10 +271,7 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
         {position ? (
           <View style={styles.pnlCard}>
             <Text style={styles.statusSubtitle}>
-              {strings.stockDetail.positionSummary(
-                position.quantity,
-                position.avgCost.toFixed(2),
-              )}
+              {strings.stockDetail.positionSummary(position.quantity, position.avgCost.toFixed(2))}
             </Text>
             {exitAdvice && (
               <>
@@ -334,7 +337,11 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
       </Section>
       <View style={styles.primaryButtonWrap}>
         <PrimaryButton
-          title={tradeSide === 'buy' ? strings.stockDetail.addBuyRecord : strings.stockDetail.addSellRecord}
+          title={
+            tradeSide === 'buy'
+              ? strings.stockDetail.addBuyRecord
+              : strings.stockDetail.addSellRecord
+          }
           onPress={() => void handleAddTrade()}
           loading={savingTrade}
         />
@@ -371,7 +378,11 @@ export default function StockDetailScreen({ route, navigation }: Props): React.J
           />
         ) : (
           notifications.map((n) => (
-            <StatusRow key={n.id} title={`[${n.strategyType}] ${n.signalKey}`} subtitle={n.sentAt} />
+            <StatusRow
+              key={n.id}
+              title={`[${n.strategyType}] ${n.signalKey}`}
+              subtitle={n.sentAt}
+            />
           ))
         )}
       </Section>

@@ -7,7 +7,12 @@ export type RiskLevel = 'low' | 'medium' | 'high';
 
 export type RankedRecommendation =
   | { strategyType: 'grid'; params: BacktestParams; result: BacktestResult; riskLevel: RiskLevel }
-  | { strategyType: 'pyramid'; params: PyramidBacktestParams; result: BacktestResult; riskLevel: RiskLevel };
+  | {
+      strategyType: 'pyramid';
+      params: PyramidBacktestParams;
+      result: BacktestResult;
+      riskLevel: RiskLevel;
+    };
 
 export interface RecommendationResult {
   /** 同期間單純買進持有的報酬率，當所有策略組合的對照基準——策略沒有明顯優於這個數字，
@@ -38,13 +43,22 @@ const EXIT_PRESETS: { takeProfitPercent: number; stopLossPercent: number }[] = [
 
 /** 金字塔加碼權重：等權重（每級加碼金額相同）vs 金字塔式（越漲加越多），
  * 其餘市場狀態判斷參數（均線、盤整、ATR 等）維持規格預設值，不在回測比較裡調整——
- * 那些是「怎麼判斷趨勢」的參數，不是使用者的風險偏好，亂調容易只是貼合歷史雜訊 */
-const PYRAMID_WEIGHTS_OPTIONS: number[][] = [
+ * 那些是「怎麼判斷趨勢」的參數，不是使用者的風險偏好，亂調容易只是貼合歷史雜訊。
+ * 這三組（權重／加碼觸發／硬停損）也是 WatchlistForm 簡化 UI 唯一開放使用者選的三個
+ * 選項，直接 export 給表單重用，確保表單能選到的組合永遠跟這裡回測驗證過的組合一致，
+ * 不會兩邊各自維護一份數字造成漂移。 */
+export const PYRAMID_WEIGHTS_OPTIONS: number[][] = [
   [1, 1, 1, 1],
   [1, 1.5, 2, 2.5],
 ];
-const PYRAMID_ADD_TRIGGER_OPTIONS = [3, 5, 8];
-const PYRAMID_HARD_STOP_OPTIONS = [20, 35];
+export const PYRAMID_ADD_TRIGGER_OPTIONS = [3, 5, 8];
+export const PYRAMID_HARD_STOP_OPTIONS = [20, 35];
+
+export type PyramidWeightsProfile = 'equal' | 'pyramid';
+
+export function pyramidWeightsForProfile(profile: PyramidWeightsProfile): number[] {
+  return profile === 'equal' ? PYRAMID_WEIGHTS_OPTIONS[0] : PYRAMID_WEIGHTS_OPTIONS[1];
+}
 
 const REFERENCE_BUDGET = 100_000;
 /** 資料筆數不足這個門檻就不跑回測，避免用太短的區間硬算出沒有意義的數字。
@@ -101,11 +115,21 @@ export function recommendStrategyParams(history: PricePoint[]): RecommendationRe
 
   const gridResults: RankedRecommendation[] = buildGridParamCombinations().map((params) => {
     const result = runGridBacktest(history, params, REFERENCE_BUDGET);
-    return { strategyType: 'grid', params, result, riskLevel: classifyRisk(result.maxDrawdownPercent) };
+    return {
+      strategyType: 'grid',
+      params,
+      result,
+      riskLevel: classifyRisk(result.maxDrawdownPercent),
+    };
   });
   const pyramidResults: RankedRecommendation[] = buildPyramidParamCombinations().map((params) => {
     const result = runPyramidBacktest(history, params, REFERENCE_BUDGET);
-    return { strategyType: 'pyramid', params, result, riskLevel: classifyRisk(result.maxDrawdownPercent) };
+    return {
+      strategyType: 'pyramid',
+      params,
+      result,
+      riskLevel: classifyRisk(result.maxDrawdownPercent),
+    };
   });
 
   const results = [...gridResults, ...pyramidResults];

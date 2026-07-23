@@ -50,7 +50,14 @@ test('z、pz 都拿不到時 fallback 用試撮合價 oz', async () => {
 
 test('z、pz、oz 都拿不到時 fallback 用五檔買賣中價', async () => {
   mockMisResponse([
-    { ...baseRow, z: '-', pz: '-', oz: '-', b: '2400_2399_2398_2397_2396', a: '2404_2405_2406_2407_2408' },
+    {
+      ...baseRow,
+      z: '-',
+      pz: '-',
+      oz: '-',
+      b: '2400_2399_2398_2397_2396',
+      a: '2404_2405_2406_2407_2408',
+    },
   ]);
 
   const [quote] = await fetchRealtimeQuotes(['2330']);
@@ -87,17 +94,7 @@ describe('fetchExtendedHistoricalQuotes', () => {
   });
 
   test('當天完全沒有成交（開高低收為 "--"）時跳過該列，不整批噴錯中斷', async () => {
-    const noTradeRow = [
-      '115/07/03',
-      '0',
-      '0',
-      '--',
-      '--',
-      '--',
-      '--',
-      ' 0.00',
-      '0',
-    ];
+    const noTradeRow = ['115/07/03', '0', '0', '--', '--', '--', '--', ' 0.00', '0'];
     mockStockDayResponse('OK', [
       stockDayRow('115/07/01', '100'),
       noTradeRow,
@@ -118,7 +115,8 @@ describe('fetchExtendedHistoricalQuotes', () => {
       const isRecent = call <= 2;
       return Promise.resolve({
         ok: true,
-        json: async () => (isRecent ? { stat: 'OK', data: [stockDayRow('115/07/01', '100')] } : { stat: '' }),
+        json: async () =>
+          isRecent ? { stat: 'OK', data: [stockDayRow('115/07/01', '100')] } : { stat: '' },
       });
     }) as unknown as typeof fetch;
 

@@ -33,7 +33,8 @@ describe('recommendStrategyParams', () => {
   test('回傳同期買進持有報酬率當對照基準', () => {
     const history = syntheticHistory(300);
     const { buyHoldReturnPercent } = recommendStrategyParams(history);
-    const expected = ((history[history.length - 1].close - history[0].close) / history[0].close) * 100;
+    const expected =
+      ((history[history.length - 1].close - history[0].close) / history[0].close) * 100;
     expect(buyHoldReturnPercent).toBeCloseTo(expected, 5);
   });
 

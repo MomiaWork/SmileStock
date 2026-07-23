@@ -69,6 +69,20 @@ export interface Translations {
     backfillFailedTitle: string;
     backfillFailedSuffix: string;
     saveFailedTitle: string;
+    sectionPyramid: string;
+    sectionPyramidFooter: string;
+    fieldPyramidEnabled: string;
+    fieldEntryPrice: string;
+    placeholderEntryFetching: string;
+    placeholderEntryExample: string;
+    fieldAddOnStyle: string;
+    addOnStyleEqual: string;
+    addOnStylePyramid: string;
+    fieldAddOnPace: string;
+    fieldHardStopChoice: string;
+    validationPyramid: string;
+    pyramidResetWarningTitle: string;
+    pyramidResetWarningMessage: string;
   };
   stockDetail: {
     sectionChart: string;
@@ -166,7 +180,6 @@ export interface Translations {
     strategyTypeGrid: string;
     strategyTypePyramid: string;
     pyramidResultLine1: (weights: string, addTrigger: number, hardStop: number) => string;
-    pyramidApplyUnavailable: string;
     riskLevelLabel: (level: string) => string;
     riskLevelLow: string;
     riskLevelMedium: string;
@@ -254,9 +267,24 @@ export const zh: Translations = {
     anchorFetchFailedTitle: '查詢目前價格失敗',
     anchorFetchFailedSuffix: '\n\n請手動輸入錨定價',
     backfillFailedTitle: '歷史資料回補失敗',
-    backfillFailedSuffix:
-      '\n\n進場確認濾網要等資料累積足夠天數才會開始判斷，稍後可再手動同步。',
+    backfillFailedSuffix: '\n\n進場確認濾網要等資料累積足夠天數才會開始判斷，稍後可再手動同步。',
     saveFailedTitle: '儲存失敗',
+    sectionPyramid: '金字塔加碼',
+    sectionPyramidFooter:
+      '順勢策略：確認漲勢成立才加碼，加碼幅度隨漲幅拉大，移動停損只上移不下移；跌破入場價一定比例會無條件停損。趨勢判斷用的均線等參數固定用內建設定，不開放調整，避免貼合單一股票的歷史雜訊。',
+    fieldPyramidEnabled: '啟用金字塔加碼',
+    fieldEntryPrice: '進場價',
+    placeholderEntryFetching: '查詢中...',
+    placeholderEntryExample: '例如 580',
+    fieldAddOnStyle: '加碼風格',
+    addOnStyleEqual: '等權重（每級加碼金額相同）',
+    addOnStylePyramid: '金字塔式（越漲加越多）',
+    fieldAddOnPace: '加碼步調（漲多少 % 加碼一次）',
+    fieldHardStopChoice: '硬停損（跌破入場價幾 % 無條件出場）',
+    validationPyramid: '請確認金字塔加碼的進場價已正確填寫（需大於 0）',
+    pyramidResetWarningTitle: '注意：儲存會重置金字塔加碼狀態',
+    pyramidResetWarningMessage:
+      '金字塔加碼會記錄目前加碼到第幾級、停損價等狀態，編輯這檔標的（即使只改查價間隔等其他欄位）目前會把這個狀態重置回初始值，需要重新累積。確定要儲存嗎？',
   },
   stockDetail: {
     sectionChart: '價格走勢',
@@ -371,7 +399,6 @@ export const zh: Translations = {
     strategyTypePyramid: '金字塔加碼',
     pyramidResultLine1: (weights, addTrigger, hardStop) =>
       `加碼權重 ${weights} ／ 加碼觸發漲幅 ${addTrigger}% ／ 硬停損 ${hardStop}%`,
-    pyramidApplyUnavailable: 'App 尚未支援直接套用金字塔加碼設定，這裡先讓你比較數字',
     riskLevelLabel: (level) => `風險：${level}`,
     riskLevelLow: '低',
     riskLevelMedium: '中',
@@ -439,7 +466,7 @@ export const en: Translations = {
     fieldIntervalSec: 'Price Check Interval (sec)',
     sectionExit: 'Exit Settings',
     sectionExitFooter:
-      "Used to decide exit advice while holding a position. Leave blank to use the defaults (10% take-profit / 8% stop-loss).",
+      'Used to decide exit advice while holding a position. Leave blank to use the defaults (10% take-profit / 8% stop-loss).',
     fieldTakeProfit: 'Take Profit %',
     placeholderTakeProfit: 'Defaults to 10',
     fieldStopLoss: 'Stop Loss %',
@@ -467,6 +494,23 @@ export const en: Translations = {
     backfillFailedSuffix:
       '\n\nThe entry confirmation filter needs enough accumulated days of data before it can judge — you can sync manually again later.',
     saveFailedTitle: 'Save Failed',
+    sectionPyramid: 'Pyramid Add-on',
+    sectionPyramidFooter:
+      "A trend-following strategy: only adds once an uptrend is confirmed, add-on size grows with the move, trailing stop only moves up. A hard stop fires unconditionally once price falls a set percentage below entry. Trend-detection parameters (moving averages, etc.) are fixed at built-in defaults and not user-adjustable, to avoid fitting one stock's historical noise.",
+    fieldPyramidEnabled: 'Enable Pyramid Add-on',
+    fieldEntryPrice: 'Entry Price',
+    placeholderEntryFetching: 'Fetching...',
+    placeholderEntryExample: 'e.g. 580',
+    fieldAddOnStyle: 'Add-on Style',
+    addOnStyleEqual: 'Equal weight (same amount each add-on)',
+    addOnStylePyramid: 'Pyramid style (larger amounts as it rises)',
+    fieldAddOnPace: 'Add-on Pace (% rise before adding again)',
+    fieldHardStopChoice: 'Hard Stop (% below entry for unconditional exit)',
+    validationPyramid:
+      'Please make sure the pyramid add-on entry price is filled in correctly (must be greater than 0)',
+    pyramidResetWarningTitle: 'Note: Saving Resets Pyramid Add-on State',
+    pyramidResetWarningMessage:
+      'Pyramid add-on tracks state like the current tier and stop price. Editing this stock (even unrelated fields like the check interval) currently resets that state back to its initial values, which then has to rebuild. Save anyway?',
   },
   stockDetail: {
     sectionChart: 'Price Chart',
@@ -478,8 +522,7 @@ export const en: Translations = {
     triggered: '🔴 Triggered',
     notTriggered: '⚪️ Not Triggered',
     sectionPosition: 'Position & P&L',
-    positionSummary: (quantity, avgCost) =>
-      `Holding ${quantity} shares, avg cost ${avgCost}`,
+    positionSummary: (quantity, avgCost) => `Holding ${quantity} shares, avg cost ${avgCost}`,
     pnlSummary: (marketValue, pnl, returnRate) =>
       `Market value ${marketValue}, P&L ${pnl} (return ${returnRate}%)`,
     noPositionTitle: 'No position currently',
@@ -566,7 +609,8 @@ export const en: Translations = {
     insufficientDataMessage: (code, months) =>
       `Not enough historical data for ${code} over the past ${months} months to run a backtest`,
     analyzeFailedTitle: 'Analysis Failed',
-    resultsSectionTitle: 'Suggested Settings (grid + pyramid add-on mixed, ranked by total return, top 5, each tagged with a risk level)',
+    resultsSectionTitle:
+      'Suggested Settings (grid + pyramid add-on mixed, ranked by total return, top 5, each tagged with a risk level)',
     disclaimer: (code, months) =>
       `The above is backtested using ${code}'s own historical data over roughly the past ${months} months. It does not guarantee future performance — for reference only.`,
     noResults: 'Not enough data to generate suggestions',
@@ -583,7 +627,6 @@ export const en: Translations = {
     strategyTypePyramid: 'Pyramid Add-on',
     pyramidResultLine1: (weights, addTrigger, hardStop) =>
       `Add-on weights ${weights} ／ Add trigger ${addTrigger}% ／ Hard stop ${hardStop}%`,
-    pyramidApplyUnavailable: "The app doesn't support applying a pyramid add-on setting directly yet — this is for comparison only",
     riskLevelLabel: (level) => `Risk: ${level}`,
     riskLevelLow: 'Low',
     riskLevelMedium: 'Medium',

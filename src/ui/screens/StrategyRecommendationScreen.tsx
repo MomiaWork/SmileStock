@@ -4,8 +4,15 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fetchExtendedHistoricalQuotes, fetchRealtimeQuotes } from '../../data-fetch/twse-client';
 import { useI18n } from '../../i18n';
-import type { RankedRecommendation, RiskLevel } from '../../strategy-engine/strategy-recommender';
-import { recommendStrategyParams } from '../../strategy-engine/strategy-recommender';
+import type {
+  PyramidWeightsProfile,
+  RankedRecommendation,
+  RiskLevel,
+} from '../../strategy-engine/strategy-recommender';
+import {
+  PYRAMID_WEIGHTS_OPTIONS,
+  recommendStrategyParams,
+} from '../../strategy-engine/strategy-recommender';
 import type { PricePoint } from '../../strategy-engine/types';
 import PrimaryButton from '../components/PrimaryButton';
 import { InputRow } from '../components/Row';
@@ -23,9 +30,7 @@ const riskTagStyles: Record<RiskLevel, { color: string }> = {
   high: { color: colors.destructive },
 };
 
-export default function StrategyRecommendationScreen({
-  navigation,
-}: Props): React.JSX.Element {
+export default function StrategyRecommendationScreen({ navigation }: Props): React.JSX.Element {
   const { strings } = useI18n();
   const riskLevelText: Record<RiskLevel, string> = {
     low: strings.strategyRecommendation.riskLevelLow,
@@ -81,9 +86,10 @@ export default function StrategyRecommendationScreen({
     }
   };
 
-  const handleApply = (item: Extract<RankedRecommendation, { strategyType: 'grid' }>): void => {
+  const handleApplyGrid = (item: Extract<RankedRecommendation, { strategyType: 'grid' }>): void => {
     navigation.navigate('WatchlistForm', {
       prefill: {
+        strategyType: 'grid',
         stockCode: analyzedCode,
         stockName: analyzedName,
         spacingPercent: item.params.spacingPercent,
@@ -91,6 +97,23 @@ export default function StrategyRecommendationScreen({
         entryConfirmEnabled: item.params.momentumConfirmEnabled,
         takeProfitPercent: item.params.takeProfitPercent,
         stopLossPercent: item.params.stopLossPercent,
+      },
+    });
+  };
+
+  const handleApplyPyramid = (
+    item: Extract<RankedRecommendation, { strategyType: 'pyramid' }>,
+  ): void => {
+    const weightsProfile: PyramidWeightsProfile =
+      item.params.weights.join(',') === PYRAMID_WEIGHTS_OPTIONS[0].join(',') ? 'equal' : 'pyramid';
+    navigation.navigate('WatchlistForm', {
+      prefill: {
+        strategyType: 'pyramid',
+        stockCode: analyzedCode,
+        stockName: analyzedName,
+        weightsProfile,
+        addTriggerPct: item.params.addTriggerPct,
+        hardStopPct: item.params.hardStopPct,
       },
     });
   };
@@ -119,7 +142,9 @@ export default function StrategyRecommendationScreen({
 
       {results !== null && (
         <>
-          <Text style={styles.sectionTitle}>{strings.strategyRecommendation.resultsSectionTitle}</Text>
+          <Text style={styles.sectionTitle}>
+            {strings.strategyRecommendation.resultsSectionTitle}
+          </Text>
           <Text style={styles.disclaimerText}>
             {strings.strategyRecommendation.disclaimer(analyzedCode || stockCode, BACKTEST_MONTHS)}
           </Text>
@@ -173,16 +198,12 @@ export default function StrategyRecommendationScreen({
                     item.result.tradeCount,
                   )}
                 </Text>
-                {item.strategyType === 'grid' ? (
-                  <PrimaryButton
-                    title={strings.strategyRecommendation.apply}
-                    onPress={() => handleApply(item)}
-                  />
-                ) : (
-                  <Text style={styles.pyramidNoteText}>
-                    {strings.strategyRecommendation.pyramidApplyUnavailable}
-                  </Text>
-                )}
+                <PrimaryButton
+                  title={strings.strategyRecommendation.apply}
+                  onPress={() =>
+                    item.strategyType === 'grid' ? handleApplyGrid(item) : handleApplyPyramid(item)
+                  }
+                />
               </View>
             </View>
           ))}
@@ -238,9 +259,6 @@ const styles = StyleSheet.create({
   riskTagText: {
     ...typography.footnote,
     fontWeight: '700',
-  },
-  pyramidNoteText: {
-    ...typography.footnote,
   },
   card: {
     flexDirection: 'row',
