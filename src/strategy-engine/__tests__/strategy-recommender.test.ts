@@ -18,18 +18,28 @@ function syntheticHistory(days: number): PricePoint[] {
 }
 
 describe('recommendStrategyParams', () => {
-  test('資料筆數不足時回傳空陣列，不勉強跑回測', () => {
-    expect(recommendStrategyParams(syntheticHistory(30))).toEqual([]);
+  test('資料筆數不足時回傳空建議清單，不勉強跑回測', () => {
+    expect(recommendStrategyParams(syntheticHistory(30))).toEqual({
+      buyHoldReturnPercent: 0,
+      recommendations: [],
+    });
   });
 
-  test('資料足夠時，跑滿 3×3×2×3=54 組合並回傳前 5 名', () => {
-    const results = recommendStrategyParams(syntheticHistory(300));
-    expect(results).toHaveLength(5);
+  test('資料足夠時，網格3×3×2×3=54組合＋金字塔2×3×2=12組合混合排序，回傳前 5 名', () => {
+    const { recommendations } = recommendStrategyParams(syntheticHistory(300));
+    expect(recommendations).toHaveLength(5);
+  });
+
+  test('回傳同期買進持有報酬率當對照基準', () => {
+    const history = syntheticHistory(300);
+    const { buyHoldReturnPercent } = recommendStrategyParams(history);
+    const expected = ((history[history.length - 1].close - history[0].close) / history[0].close) * 100;
+    expect(buyHoldReturnPercent).toBeCloseTo(expected, 5);
   });
 
   test('回傳結果依風險調整分數（報酬率 ÷ max(最大回撤,1)）由高到低排序', () => {
-    const results = recommendStrategyParams(syntheticHistory(300));
-    const scores = results.map(
+    const { recommendations } = recommendStrategyParams(syntheticHistory(300));
+    const scores = recommendations.map(
       (r) => r.result.totalReturnPercent / Math.max(r.result.maxDrawdownPercent, 1),
     );
     for (let i = 1; i < scores.length; i += 1) {
@@ -37,16 +47,29 @@ describe('recommendStrategyParams', () => {
     }
   });
 
-  test('每筆結果都帶有完整的參數組合', () => {
-    const [top] = recommendStrategyParams(syntheticHistory(300));
-    expect(top.params).toEqual(
-      expect.objectContaining({
-        spacingPercent: expect.any(Number),
-        tierCount: expect.any(Number),
-        momentumConfirmEnabled: expect.any(Boolean),
-        takeProfitPercent: expect.any(Number),
-        stopLossPercent: expect.any(Number),
-      }),
-    );
+  test('每筆結果都帶有策略類型標籤與對應的完整參數組合', () => {
+    const { recommendations } = recommendStrategyParams(syntheticHistory(300));
+    for (const item of recommendations) {
+      expect(['grid', 'pyramid']).toContain(item.strategyType);
+      if (item.strategyType === 'grid') {
+        expect(item.params).toEqual(
+          expect.objectContaining({
+            spacingPercent: expect.any(Number),
+            tierCount: expect.any(Number),
+            momentumConfirmEnabled: expect.any(Boolean),
+            takeProfitPercent: expect.any(Number),
+            stopLossPercent: expect.any(Number),
+          }),
+        );
+      } else {
+        expect(item.params).toEqual(
+          expect.objectContaining({
+            weights: expect.any(Array),
+            addTriggerPct: expect.any(Number),
+            hardStopPct: expect.any(Number),
+          }),
+        );
+      }
+    }
   });
 });

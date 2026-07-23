@@ -24,6 +24,7 @@ export default function StrategyRecommendationScreen({
   const [stockCode, setStockCode] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<RankedRecommendation[] | null>(null);
+  const [buyHoldReturnPercent, setBuyHoldReturnPercent] = useState(0);
   const [analyzedCode, setAnalyzedCode] = useState('');
   const [analyzedName, setAnalyzedName] = useState('');
 
@@ -45,7 +46,7 @@ export default function StrategyRecommendationScreen({
         low: q.lowestPrice,
         volume: q.tradeVolume,
       }));
-      const recommendations = recommendStrategyParams(history);
+      const { buyHoldReturnPercent: buyHold, recommendations } = recommendStrategyParams(history);
       if (recommendations.length === 0) {
         Alert.alert(
           strings.strategyRecommendation.insufficientDataTitle,
@@ -57,6 +58,7 @@ export default function StrategyRecommendationScreen({
       // 要拿到真正的中文名稱得另外查即時報價端點；查不到就留空，不要顯示代號充當名稱
       const [realtimeQuote] = await fetchRealtimeQuotes([code]).catch(() => []);
       setAnalyzedName(realtimeQuote?.name ?? '');
+      setBuyHoldReturnPercent(buyHold);
       setResults(recommendations);
     } catch (err) {
       Alert.alert(
@@ -68,7 +70,7 @@ export default function StrategyRecommendationScreen({
     }
   };
 
-  const handleApply = (item: RankedRecommendation): void => {
+  const handleApply = (item: Extract<RankedRecommendation, { strategyType: 'grid' }>): void => {
     navigation.navigate('WatchlistForm', {
       prefill: {
         stockCode: analyzedCode,
@@ -110,6 +112,9 @@ export default function StrategyRecommendationScreen({
           <Text style={styles.disclaimerText}>
             {strings.strategyRecommendation.disclaimer(analyzedCode || stockCode, BACKTEST_MONTHS)}
           </Text>
+          <Text style={styles.benchmarkText}>
+            {strings.strategyRecommendation.buyHoldLabel(buyHoldReturnPercent.toFixed(1))}
+          </Text>
           {results.length === 0 && (
             <Text style={styles.emptyText}>{strings.strategyRecommendation.noResults}</Text>
           )}
@@ -119,17 +124,32 @@ export default function StrategyRecommendationScreen({
                 <Text style={styles.rankBadgeText}>{index + 1}</Text>
               </View>
               <View style={styles.cardBody}>
-                <Text style={styles.resultTitle}>
-                  {strings.strategyRecommendation.resultLine1(
-                    item.params.spacingPercent,
-                    item.params.tierCount,
-                    item.params.momentumConfirmEnabled
-                      ? strings.strategyRecommendation.filterOn
-                      : strings.strategyRecommendation.filterOff,
-                    item.params.takeProfitPercent,
-                    item.params.stopLossPercent,
-                  )}
+                <Text style={styles.typeTagText}>
+                  {item.strategyType === 'grid'
+                    ? strings.strategyRecommendation.strategyTypeGrid
+                    : strings.strategyRecommendation.strategyTypePyramid}
                 </Text>
+                {item.strategyType === 'grid' ? (
+                  <Text style={styles.resultTitle}>
+                    {strings.strategyRecommendation.resultLine1(
+                      item.params.spacingPercent,
+                      item.params.tierCount,
+                      item.params.momentumConfirmEnabled
+                        ? strings.strategyRecommendation.filterOn
+                        : strings.strategyRecommendation.filterOff,
+                      item.params.takeProfitPercent,
+                      item.params.stopLossPercent,
+                    )}
+                  </Text>
+                ) : (
+                  <Text style={styles.resultTitle}>
+                    {strings.strategyRecommendation.pyramidResultLine1(
+                      item.params.weights.join(':'),
+                      item.params.addTriggerPct,
+                      item.params.hardStopPct,
+                    )}
+                  </Text>
+                )}
                 <Text style={styles.resultMetrics}>
                   {strings.strategyRecommendation.resultLine2(
                     item.result.totalReturnPercent.toFixed(1),
@@ -137,10 +157,16 @@ export default function StrategyRecommendationScreen({
                     item.result.tradeCount,
                   )}
                 </Text>
-                <PrimaryButton
-                  title={strings.strategyRecommendation.apply}
-                  onPress={() => handleApply(item)}
-                />
+                {item.strategyType === 'grid' ? (
+                  <PrimaryButton
+                    title={strings.strategyRecommendation.apply}
+                    onPress={() => handleApply(item)}
+                  />
+                ) : (
+                  <Text style={styles.pyramidNoteText}>
+                    {strings.strategyRecommendation.pyramidApplyUnavailable}
+                  </Text>
+                )}
               </View>
             </View>
           ))}
@@ -174,7 +200,21 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     marginHorizontal: spacing.xs,
   },
+  benchmarkText: {
+    ...typography.footnote,
+    fontWeight: '600',
+    marginBottom: spacing.md,
+    marginHorizontal: spacing.xs,
+  },
   emptyText: {
+    ...typography.footnote,
+  },
+  typeTagText: {
+    ...typography.footnote,
+    color: colors.tint,
+    fontWeight: '700',
+  },
+  pyramidNoteText: {
     ...typography.footnote,
   },
   card: {

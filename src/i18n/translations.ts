@@ -153,6 +153,11 @@ export interface Translations {
     filterOff: string;
     resultLine2: (totalReturn: string, maxDrawdown: string, tradeCount: number) => string;
     apply: string;
+    buyHoldLabel: (returnPercent: string) => string;
+    strategyTypeGrid: string;
+    strategyTypePyramid: string;
+    pyramidResultLine1: (weights: string, addTrigger: number, hardStop: number) => string;
+    pyramidApplyUnavailable: string;
   };
   priceChart: {
     insufficientData: string;
@@ -317,7 +322,7 @@ export const zh: Translations = {
   strategyRecommendation: {
     sectionAnalyze: '分析標的',
     sectionAnalyzeFooter: (months) =>
-      `輸入標的代號，用過去約 ${months} 個月的歷史資料試算幾組網格參數設定的表現，幫你決定新增這檔標的時要用哪組設定。抓取歷史資料需要依序呼叫多次 TWSE API，可能需要一段時間，請耐心等候。`,
+      `輸入標的代號，用過去約 ${months} 個月的歷史資料試算網格與金字塔加碼兩種策略的表現，幫你決定新增這檔標的時要用哪個策略、哪組設定——網格適合區間震盪，金字塔加碼適合單邊趨勢，走勢不同適合的策略也不同。抓取歷史資料需要依序呼叫多次 TWSE API，可能需要一段時間，請耐心等候。`,
     fieldStockCode: '標的代碼',
     placeholderStockCode: '例如 2330',
     analyze: '分析',
@@ -326,7 +331,7 @@ export const zh: Translations = {
     insufficientDataMessage: (code, months) =>
       `${code} 過去 ${months} 個月的歷史資料不足以進行回測分析`,
     analyzeFailedTitle: '分析失敗',
-    resultsSectionTitle: '建議設定（依風險調整後報酬排序，前 5 名）',
+    resultsSectionTitle: '建議設定（網格＋金字塔加碼混合，依風險調整後報酬排序，前 5 名）',
     disclaimer: (code, months) =>
       `以上是根據 ${code} 過去約 ${months} 個月自己的歷史資料試算出來的結果，不是保證未來也會這樣表現，僅供參考。`,
     noResults: '資料不足，無法產生建議',
@@ -337,6 +342,13 @@ export const zh: Translations = {
     resultLine2: (totalReturn, maxDrawdown, tradeCount) =>
       `總報酬 ${totalReturn}% ／ 最大回撤 ${maxDrawdown}% ／ 交易次數 ${tradeCount}`,
     apply: '套用這組設定',
+    buyHoldLabel: (returnPercent) =>
+      `同期間單純買進持有報酬率：${returnPercent}% ／ 幫你判斷這段期間主動操作是否真的比不管它更好`,
+    strategyTypeGrid: '網格',
+    strategyTypePyramid: '金字塔加碼',
+    pyramidResultLine1: (weights, addTrigger, hardStop) =>
+      `加碼權重 ${weights} ／ 加碼觸發漲幅 ${addTrigger}% ／ 硬停損 ${hardStop}%`,
+    pyramidApplyUnavailable: 'App 尚未支援直接套用金字塔加碼設定，這裡先讓你比較數字',
   },
   priceChart: {
     insufficientData: '歷史資料不足，無法繪製走勢圖',
@@ -508,7 +520,7 @@ export const en: Translations = {
   strategyRecommendation: {
     sectionAnalyze: 'Analyze Stock',
     sectionAnalyzeFooter: (months) =>
-      `Enter a stock code to backtest several grid parameter sets against roughly the past ${months} months of history, helping you decide which settings to use when you add this stock. Fetching history calls the TWSE API multiple times in sequence, so it may take a while — please be patient.`,
+      `Enter a stock code to backtest both grid and pyramid add-on strategies against roughly the past ${months} months of history, helping you decide which strategy and settings to use when you add this stock — grid suits range-bound moves, pyramid add-on suits sustained trends, so the right strategy depends on how the stock actually moves. Fetching history calls the TWSE API multiple times in sequence, so it may take a while — please be patient.`,
     fieldStockCode: 'Stock Code',
     placeholderStockCode: 'e.g. 2330',
     analyze: 'Analyze',
@@ -517,7 +529,7 @@ export const en: Translations = {
     insufficientDataMessage: (code, months) =>
       `Not enough historical data for ${code} over the past ${months} months to run a backtest`,
     analyzeFailedTitle: 'Analysis Failed',
-    resultsSectionTitle: 'Suggested Settings (ranked by risk-adjusted return, top 5)',
+    resultsSectionTitle: 'Suggested Settings (grid + pyramid add-on mixed, ranked by risk-adjusted return, top 5)',
     disclaimer: (code, months) =>
       `The above is backtested using ${code}'s own historical data over roughly the past ${months} months. It does not guarantee future performance — for reference only.`,
     noResults: 'Not enough data to generate suggestions',
@@ -528,6 +540,13 @@ export const en: Translations = {
     resultLine2: (totalReturn, maxDrawdown, tradeCount) =>
       `Total return ${totalReturn}% ／ Max drawdown ${maxDrawdown}% ／ Trades ${tradeCount}`,
     apply: 'Apply This Setting',
+    buyHoldLabel: (returnPercent) =>
+      `Buy-and-hold return over the same period: ${returnPercent}% ／ Use this to judge whether active management actually beat just holding`,
+    strategyTypeGrid: 'Grid',
+    strategyTypePyramid: 'Pyramid Add-on',
+    pyramidResultLine1: (weights, addTrigger, hardStop) =>
+      `Add-on weights ${weights} ／ Add trigger ${addTrigger}% ／ Hard stop ${hardStop}%`,
+    pyramidApplyUnavailable: "The app doesn't support applying a pyramid add-on setting directly yet — this is for comparison only",
   },
   priceChart: {
     insufficientData: 'Not enough history to draw a chart',
