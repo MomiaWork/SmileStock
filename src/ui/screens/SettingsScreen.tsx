@@ -9,10 +9,13 @@ import { getDb } from '../../db/schema';
 import {
   DEFAULT_CLAUDE_SHORTCUT_NAME,
   DEFAULT_GLOBAL_INTERVAL_SEC,
+  DEFAULT_MAX_WATCHLIST_SIZE,
   getClaudeShortcutName,
   getGlobalDefaultIntervalSec,
+  getMaxWatchlistSize,
   setClaudeShortcutName,
   setGlobalDefaultIntervalSec,
+  setMaxWatchlistSize,
 } from '../../db/settings-repo';
 import { SUPPORTED_LANGUAGES, useI18n, type LanguagePreference } from '../../i18n';
 import { requestNotificationPermission } from '../../notifications/local-notification';
@@ -27,6 +30,9 @@ export default function SettingsScreen(): React.JSX.Element {
   const { strings, preference, setPreference } = useI18n();
   const [intervalSec, setIntervalSec] = useState(String(DEFAULT_GLOBAL_INTERVAL_SEC));
   const [shortcutName, setShortcutName] = useState(DEFAULT_CLAUDE_SHORTCUT_NAME);
+  const [maxWatchlistSize, setMaxWatchlistSizeInput] = useState(
+    String(DEFAULT_MAX_WATCHLIST_SIZE),
+  );
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<string | null>(null);
@@ -38,6 +44,7 @@ export default function SettingsScreen(): React.JSX.Element {
     const db = await getDb();
     setIntervalSec(String(await getGlobalDefaultIntervalSec(db)));
     setShortcutName(await getClaudeShortcutName(db));
+    setMaxWatchlistSizeInput(String(await getMaxWatchlistSize(db)));
 
     const permissions = await Notifications.getPermissionsAsync();
     setPermissionGranted(permissions.granted);
@@ -56,7 +63,11 @@ export default function SettingsScreen(): React.JSX.Element {
 
   const handleSave = async (): Promise<void> => {
     const parsed = Number(intervalSec);
+    const parsedMaxWatchlistSize = Number(maxWatchlistSize);
     if (!Number.isFinite(parsed) || parsed <= 0) {
+      return;
+    }
+    if (!Number.isInteger(parsedMaxWatchlistSize) || parsedMaxWatchlistSize <= 0) {
       return;
     }
     setSaving(true);
@@ -64,6 +75,7 @@ export default function SettingsScreen(): React.JSX.Element {
       const db = await getDb();
       await setGlobalDefaultIntervalSec(db, parsed);
       await setClaudeShortcutName(db, shortcutName);
+      await setMaxWatchlistSize(db, parsedMaxWatchlistSize);
       setSaved(true);
     } finally {
       setSaving(false);
@@ -109,6 +121,12 @@ export default function SettingsScreen(): React.JSX.Element {
           label={strings.settings.fieldClaudeShortcutName}
           value={shortcutName}
           onChangeText={setShortcutName}
+        />
+        <InputRow
+          label={strings.settings.fieldMaxWatchlistSize}
+          value={maxWatchlistSize}
+          onChangeText={setMaxWatchlistSizeInput}
+          keyboardType="numeric"
         />
       </Section>
       <View style={styles.saveButtonWrap}>

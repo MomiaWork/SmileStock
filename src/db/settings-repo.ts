@@ -32,6 +32,20 @@ export async function setClaudeShortcutName(db: SQLiteDatabase, name: string): P
   await setMeta(db, CLAUDE_SHORTCUT_NAME_KEY, name.trim());
 }
 
+const MAX_WATCHLIST_SIZE_KEY = 'max_watchlist_size';
+export const DEFAULT_MAX_WATCHLIST_SIZE = 10;
+
+export async function getMaxWatchlistSize(db: SQLiteDatabase): Promise<number> {
+  const value = await getMeta(db, MAX_WATCHLIST_SIZE_KEY);
+  if (value === null) return DEFAULT_MAX_WATCHLIST_SIZE;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_MAX_WATCHLIST_SIZE;
+}
+
+export async function setMaxWatchlistSize(db: SQLiteDatabase, size: number): Promise<void> {
+  await setMeta(db, MAX_WATCHLIST_SIZE_KEY, String(Math.floor(size)));
+}
+
 const LANGUAGE_PREFERENCE_KEY = 'language_preference';
 const VALID_LANGUAGE_PREFERENCES = ['system', 'zh', 'en'] as const;
 export type LanguagePreferenceValue = (typeof VALID_LANGUAGE_PREFERENCES)[number];

@@ -148,6 +148,7 @@ export interface Translations {
     sectionGlobalDefaultsFooter: string;
     fieldIntervalSec: string;
     fieldClaudeShortcutName: string;
+    fieldMaxWatchlistSize: string;
     saved: string;
     claudeShortcutFootnote: string;
     sectionNotificationPermission: string;
@@ -377,6 +378,7 @@ export const zh: Translations = {
     sectionGlobalDefaultsFooter: '個別標的若沒有自訂查價間隔，App 開著時的前景輪詢就會用這個值。',
     fieldIntervalSec: '查價間隔（秒）',
     fieldClaudeShortcutName: 'Claude 捷徑名稱',
+    fieldMaxWatchlistSize: '標的數量上限',
     saved: '已儲存',
     claudeShortcutFootnote:
       '首頁「Claude 分析」按鈕會直接執行這個名稱的 iOS 捷徑，名稱必須與捷徑 App 內的完全一致。捷徑設定方式見 docs/ios-shortcuts-setup.md。',
@@ -625,6 +627,7 @@ export const en: Translations = {
       "If a stock doesn't have its own price check interval, this value is used for foreground polling while the app is open.",
     fieldIntervalSec: 'Price Check Interval (sec)',
     fieldClaudeShortcutName: 'Claude Shortcut Name',
+    fieldMaxWatchlistSize: 'Max Watchlist Size',
     saved: 'Saved',
     claudeShortcutFootnote:
       'The "Claude Analysis" button on the home screen runs the iOS Shortcut with this exact name — it must match the name in the Shortcuts app exactly. See docs/ios-shortcuts-setup.md for setup instructions.',

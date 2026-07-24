@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { getMaxWatchlistSize } from './settings-repo';
 import type { StrategyType } from '../strategy-engine/engine';
 
 /**
@@ -46,15 +47,13 @@ export interface NewStrategyConfig {
   enabled?: boolean;
 }
 
-export const MAX_WATCHLIST_SIZE = 5;
-
 export async function addWatchlistItem(
   db: SQLiteDatabase,
   item: NewWatchlistItem,
 ): Promise<number> {
-  const current = await getWatchlist(db);
-  if (current.length >= MAX_WATCHLIST_SIZE) {
-    throw new Error(`watchlist-repo: 最多只能監控 ${MAX_WATCHLIST_SIZE} 檔標的`);
+  const [current, maxSize] = await Promise.all([getWatchlist(db), getMaxWatchlistSize(db)]);
+  if (current.length >= maxSize) {
+    throw new Error(`watchlist-repo: 最多只能監控 ${maxSize} 檔標的`);
   }
 
   const result = await db.runAsync(

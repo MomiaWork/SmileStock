@@ -16,12 +16,8 @@ import {
 import { getCurrentPrices, type CurrentPriceInfo } from '../../data-fetch/current-price';
 import { syncPriceHistory } from '../../data-fetch/price-history-sync';
 import { getDb } from '../../db/schema';
-import {
-  deleteWatchlistItem,
-  getWatchlist,
-  MAX_WATCHLIST_SIZE,
-  type WatchlistItem,
-} from '../../db/watchlist-repo';
+import { DEFAULT_MAX_WATCHLIST_SIZE, getMaxWatchlistSize } from '../../db/settings-repo';
+import { deleteWatchlistItem, getWatchlist, type WatchlistItem } from '../../db/watchlist-repo';
 import { runClaudeShortcut, shareStrategyExport } from '../../export/shortcuts-export';
 import { useI18n } from '../../i18n';
 import { requestNotificationPermission } from '../../notifications/local-notification';
@@ -42,6 +38,7 @@ const buildNumber =
 export default function WatchlistScreen({ navigation }: Props): React.JSX.Element {
   const { strings } = useI18n();
   const [items, setItems] = useState<WatchlistItem[]>([]);
+  const [maxWatchlistSize, setMaxWatchlistSize] = useState(DEFAULT_MAX_WATCHLIST_SIZE);
   const [priceInfoByCode, setPriceInfoByCode] = useState<Record<string, CurrentPriceInfo | null>>(
     {},
   );
@@ -54,6 +51,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
     const db = await getDb();
     const watchlist = await getWatchlist(db);
     setItems(watchlist);
+    setMaxWatchlistSize(await getMaxWatchlistSize(db));
     setPriceInfoByCode(
       await getCurrentPrices(
         db,
@@ -170,13 +168,13 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
     }
   };
 
-  const canAddMore = items.length < MAX_WATCHLIST_SIZE;
+  const canAddMore = items.length < maxWatchlistSize;
 
   const handleAddPress = (): void => {
     if (!canAddMore) {
       Alert.alert(
         strings.watchlist.limitReachedTitle,
-        strings.watchlist.limitReachedMessage(MAX_WATCHLIST_SIZE),
+        strings.watchlist.limitReachedMessage(maxWatchlistSize),
       );
       return;
     }
