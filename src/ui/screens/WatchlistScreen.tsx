@@ -4,12 +4,16 @@ import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import {
   Alert,
+  Animated,
+  Easing,
   FlatList,
+  LayoutAnimation,
   Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  UIManager,
   View,
 } from 'react-native';
 
@@ -40,6 +44,172 @@ const buildNumber =
     ? Constants.expoConfig?.ios?.buildNumber
     : String(Constants.expoConfig?.android?.versionCode ?? '');
 
+// Android 舊架構的橋接模式預設關閉 LayoutAnimation，要手動開啟實驗旗標才會生效；
+// iOS 不需要這個設定
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+interface WatchlistCardProps {
+  item: WatchlistItem;
+  index: number;
+  isLast: boolean;
+  priceInfo: CurrentPriceInfo | null | undefined;
+  reordering: boolean;
+  strings: ReturnType<typeof useI18n>['strings'];
+  onPress: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+/** 排序編輯狀態下卡片邊框輕微晃動，模仿 iOS 主畫面圖示進入編輯模式的視覺回饋 */
+function WatchlistCard({
+  item,
+  index,
+  isLast,
+  priceInfo,
+  reordering,
+  strings,
+  onPress,
+  onMoveUp,
+  onMoveDown,
+  onEdit,
+  onDelete,
+}: WatchlistCardProps): React.JSX.Element {
+  const [rotation] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    if (!reordering) {
+      rotation.setValue(0);
+      return;
+    }
+    // 相鄰卡片反方向晃動，視覺上比較不會像同步的機械感
+    const direction = index % 2 === 0 ? 1 : -1;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(rotation, {
+          toValue: direction,
+          duration: 120,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotation, {
+          toValue: -direction,
+          duration: 240,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotation, {
+          toValue: 0,
+          duration: 120,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      rotation.setValue(0);
+    };
+  }, [reordering, index, rotation]);
+
+  const { changeAmount, changePercent } = priceInfo ?? {
+    changeAmount: null,
+    changePercent: null,
+  };
+  const changeStyle =
+    changeAmount === null
+      ? styles.priceFlat
+      : changeAmount > 0
+        ? styles.priceUp
+        : changeAmount < 0
+          ? styles.priceDown
+          : styles.priceFlat;
+
+  return (
+    <Animated.View
+      style={{
+        transform: [
+          {
+            rotate: rotation.interpolate({
+              inputRange: [-1, 1],
+              outputRange: ['-1.5deg', '1.5deg'],
+            }),
+          },
+        ],
+      }}
+    >
+      <Pressable
+        style={({ pressed }) => [styles.card, pressed && !reordering && styles.cardPressed]}
+        onPress={reordering ? undefined : onPress}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderLeft}>
+            <Text style={styles.stockCode}>{item.stockCode}</Text>
+            <Text style={styles.stockName}>{item.stockName}</Text>
+          </View>
+          <View style={styles.priceBlock}>
+            <Text style={[styles.priceText, changeStyle]}>
+              {priceInfo ? priceInfo.price.toFixed(2) : strings.watchlist.noData}
+            </Text>
+            {changeAmount !== null && changePercent !== null && (
+              <Text style={[styles.changeText, changeStyle]}>
+                {changeAmount >= 0 ? '▲' : '▼'} {Math.abs(changeAmount).toFixed(2)} (
+                {changePercent >= 0 ? '+' : ''}
+                {changePercent.toFixed(2)}%)
+              </Text>
+            )}
+            {priceInfo && (
+              <Text style={styles.asOfText}>
+                {priceInfo.isRealtime
+                  ? priceInfo.asOf
+                  : `${priceInfo.asOf} ${strings.watchlist.closingSuffix}`}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.cardFooter}>
+          <Text style={styles.budget}>
+            {strings.watchlist.budgetLabel(item.budget.toLocaleString())}
+          </Text>
+          <View style={styles.cardActions}>
+            {reordering ? (
+              <>
+                <IconButton
+                  icon="chevron-up-outline"
+                  size={18}
+                  disabled={index === 0}
+                  onPress={onMoveUp}
+                />
+                <IconButton
+                  icon="chevron-down-outline"
+                  size={18}
+                  disabled={isLast}
+                  onPress={onMoveDown}
+                />
+              </>
+            ) : (
+              <>
+                <IconButton icon="pencil-outline" size={18} onPress={onEdit} />
+                <IconButton
+                  icon="trash-outline"
+                  size={18}
+                  color={colors.destructive}
+                  onPress={onDelete}
+                />
+              </>
+            )}
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export default function WatchlistScreen({ navigation }: Props): React.JSX.Element {
   const { strings } = useI18n();
   const [items, setItems] = useState<WatchlistItem[]>([]);
@@ -51,6 +221,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   const [checking, setChecking] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   const reload = useCallback(async () => {
     const db = await getDb();
@@ -126,6 +297,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   const handleMove = async (item: WatchlistItem, direction: 'up' | 'down'): Promise<void> => {
     const db = await getDb();
     await moveWatchlistItem(db, item.id, direction);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     await reload();
   };
 
@@ -231,6 +403,12 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
           icon="notifications-outline"
           onPress={() => navigation.navigate('NotificationHistory')}
         />
+        <PillButton
+          label={reordering ? strings.watchlist.reorderDone : strings.watchlist.reorder}
+          icon={reordering ? 'checkmark-outline' : 'swap-vertical-outline'}
+          onPress={() => setReordering((prev) => !prev)}
+          disabled={items.length < 2}
+        />
       </View>
       <FlatList
         data={items}
@@ -243,85 +421,21 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
             <Text style={styles.emptySubtext}>{strings.watchlist.emptySubtitle}</Text>
           </View>
         }
-        renderItem={({ item, index }) => {
-          const priceInfo = priceInfoByCode[item.stockCode];
-          const { changeAmount, changePercent } = priceInfo ?? {
-            changeAmount: null,
-            changePercent: null,
-          };
-          const changeStyle =
-            changeAmount === null
-              ? styles.priceFlat
-              : changeAmount > 0
-                ? styles.priceUp
-                : changeAmount < 0
-                  ? styles.priceDown
-                  : styles.priceFlat;
-
-          return (
-            <Pressable
-              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-              onPress={() => navigation.navigate('StockDetail', { watchlistId: item.id })}
-            >
-              <View style={styles.cardHeader}>
-                <View style={styles.cardHeaderLeft}>
-                  <Text style={styles.stockCode}>{item.stockCode}</Text>
-                  <Text style={styles.stockName}>{item.stockName}</Text>
-                </View>
-                <View style={styles.priceBlock}>
-                  <Text style={[styles.priceText, changeStyle]}>
-                    {priceInfo ? priceInfo.price.toFixed(2) : strings.watchlist.noData}
-                  </Text>
-                  {changeAmount !== null && changePercent !== null && (
-                    <Text style={[styles.changeText, changeStyle]}>
-                      {changeAmount >= 0 ? '▲' : '▼'} {Math.abs(changeAmount).toFixed(2)} (
-                      {changePercent >= 0 ? '+' : ''}
-                      {changePercent.toFixed(2)}%)
-                    </Text>
-                  )}
-                  {priceInfo && (
-                    <Text style={styles.asOfText}>
-                      {priceInfo.isRealtime
-                        ? priceInfo.asOf
-                        : `${priceInfo.asOf} ${strings.watchlist.closingSuffix}`}
-                    </Text>
-                  )}
-                </View>
-              </View>
-
-              <View style={styles.cardFooter}>
-                <Text style={styles.budget}>
-                  {strings.watchlist.budgetLabel(item.budget.toLocaleString())}
-                </Text>
-                <View style={styles.cardActions}>
-                  <IconButton
-                    icon="chevron-up-outline"
-                    size={18}
-                    disabled={index === 0}
-                    onPress={() => void handleMove(item, 'up')}
-                  />
-                  <IconButton
-                    icon="chevron-down-outline"
-                    size={18}
-                    disabled={index === items.length - 1}
-                    onPress={() => void handleMove(item, 'down')}
-                  />
-                  <IconButton
-                    icon="pencil-outline"
-                    size={18}
-                    onPress={() => navigation.navigate('WatchlistForm', { watchlistId: item.id })}
-                  />
-                  <IconButton
-                    icon="trash-outline"
-                    size={18}
-                    color={colors.destructive}
-                    onPress={() => handleDelete(item)}
-                  />
-                </View>
-              </View>
-            </Pressable>
-          );
-        }}
+        renderItem={({ item, index }) => (
+          <WatchlistCard
+            item={item}
+            index={index}
+            isLast={index === items.length - 1}
+            priceInfo={priceInfoByCode[item.stockCode]}
+            reordering={reordering}
+            strings={strings}
+            onPress={() => navigation.navigate('StockDetail', { watchlistId: item.id })}
+            onMoveUp={() => void handleMove(item, 'up')}
+            onMoveDown={() => void handleMove(item, 'down')}
+            onEdit={() => navigation.navigate('WatchlistForm', { watchlistId: item.id })}
+            onDelete={() => handleDelete(item)}
+          />
+        )}
         ListFooterComponent={
           <Text style={styles.versionText}>
             v{appVersion}

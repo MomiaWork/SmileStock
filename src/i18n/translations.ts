@@ -33,6 +33,8 @@ export interface Translations {
     closingSuffix: string;
     budgetLabel: (amount: string) => string;
     notificationHistory: string;
+    reorder: string;
+    reorderDone: string;
   };
   watchlistForm: {
     titleAdd: string;
@@ -252,6 +254,8 @@ export const zh: Translations = {
     closingSuffix: '收盤',
     budgetLabel: (amount) => `預算 ${amount}`,
     notificationHistory: '通知記錄',
+    reorder: '排序',
+    reorderDone: '完成',
   },
   watchlistForm: {
     titleAdd: '新增標的',
@@ -500,6 +504,8 @@ export const en: Translations = {
     closingSuffix: 'close',
     budgetLabel: (amount) => `Budget ${amount}`,
     notificationHistory: 'Notification History',
+    reorder: 'Reorder',
+    reorderDone: 'Done',
   },
   watchlistForm: {
     titleAdd: 'Add Stock',
