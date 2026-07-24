@@ -177,29 +177,16 @@ export async function getWatchlist(db: SQLiteDatabase): Promise<WatchlistItem[]>
 }
 
 /**
- * 上移/下移標的順序：先照目前顯示順序（getWatchlist 的排序）算出交換後的新順序，
- * 再把整份清單的 sort_order 依新順序重新編號（0, 1, 2...）寫回去。整批重新編號
- * 而不是只交換兩筆的 sort_order，是因為既有資料可能還沒被排序過（全部是 0），
- * 只交換兩筆不會改變顯示順序。
+ * 排序編輯畫面移動卡片時，畫面上的順序在本地 state 就直接改好、動畫也立刻播放，
+ * DB 不會跟著每次點擊寫入——UI 層在使用者按「完成」離開排序編輯狀態時才呼叫這個
+ * 函式，一次把最終順序整批寫回 sort_order（0, 1, 2...）。這樣可以避免每次點擊
+ * 都非同步讀寫 DB：連續快速點擊時，前一次的讀寫還沒做完、下一次就開始，會讀到
+ * 彼此還沒寫完的中間狀態而算錯順序，也會讓動畫的 setState 時間點變得不確定。
  */
-export async function moveWatchlistItem(
-  db: SQLiteDatabase,
-  id: number,
-  direction: 'up' | 'down',
-): Promise<void> {
-  const current = await getWatchlist(db);
-  const index = current.findIndex((item) => item.id === id);
-  if (index === -1) return;
-
-  const targetIndex = direction === 'up' ? index - 1 : index + 1;
-  if (targetIndex < 0 || targetIndex >= current.length) return;
-
-  const reordered = [...current];
-  [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
-
+export async function setWatchlistOrder(db: SQLiteDatabase, orderedIds: number[]): Promise<void> {
   await db.withTransactionAsync(async () => {
-    for (let i = 0; i < reordered.length; i += 1) {
-      await db.runAsync(`UPDATE watchlist SET sort_order = ? WHERE id = ?`, [i, reordered[i].id]);
+    for (let i = 0; i < orderedIds.length; i += 1) {
+      await db.runAsync(`UPDATE watchlist SET sort_order = ? WHERE id = ?`, [i, orderedIds[i]]);
     }
   });
 }

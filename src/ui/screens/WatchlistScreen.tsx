@@ -24,7 +24,7 @@ import { DEFAULT_MAX_WATCHLIST_SIZE, getMaxWatchlistSize } from '../../db/settin
 import {
   deleteWatchlistItem,
   getWatchlist,
-  moveWatchlistItem,
+  setWatchlistOrder,
   type WatchlistItem,
 } from '../../db/watchlist-repo';
 import { runClaudeShortcut, shareStrategyExport } from '../../export/shortcuts-export';
@@ -56,7 +56,6 @@ interface WatchlistCardProps {
   isLast: boolean;
   priceInfo: CurrentPriceInfo | null | undefined;
   reordering: boolean;
-  moving: boolean;
   strings: ReturnType<typeof useI18n>['strings'];
   onPress: () => void;
   onMoveUp: () => void;
@@ -72,7 +71,6 @@ function WatchlistCard({
   isLast,
   priceInfo,
   reordering,
-  moving,
   strings,
   onPress,
   onMoveUp,
@@ -184,13 +182,13 @@ function WatchlistCard({
                 <IconButton
                   icon="chevron-up-outline"
                   size={18}
-                  disabled={index === 0 || moving}
+                  disabled={index === 0}
                   onPress={onMoveUp}
                 />
                 <IconButton
                   icon="chevron-down-outline"
                   size={18}
-                  disabled={isLast || moving}
+                  disabled={isLast}
                   onPress={onMoveDown}
                 />
               </>
@@ -224,7 +222,6 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   const [sharing, setSharing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [reordering, setReordering] = useState(false);
-  const [moving, setMoving] = useState(false);
 
   const reload = useCallback(async () => {
     const db = await getDb();
@@ -297,27 +294,34 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
     );
   };
 
-  const handleMove = async (item: WatchlistItem, direction: 'up' | 'down'): Promise<void> => {
-    // 快速連按（例如同兩個位置來回切換）會讓上一次的 DB 讀寫還沒完成、下一次就
-    // 已經開始：兩次 moveWatchlistItem 各自讀到的「目前順序」可能不一致，算出來的
-    // 結果互相打架，且兩邊各自的 configureNext+setItems 誰先誰後也不確定，導致
-    // 後一次的畫面更新蓋掉前一次還在播的動畫，看起來就像「這次沒有動畫」。
-    // 用 moving 擋住重疊呼叫，等上一次完全結束（DB 寫完、畫面也更新完）才受理下一次
-    if (moving) return;
-    setMoving(true);
-    try {
+  /**
+   * 排序編輯狀態下的移動只改本地 state，不寫 DB——完全同步、零 await，
+   * configureNext 跟 setItems 之間不會有任何非同步空隙，動畫保證每次都能準確
+   * 註冊上；也因為整段是同步執行，快速連續點擊不會有兩次呼叫互相交錯讀寫的問題
+   * （JS 是單執行緒，一次點擊的處理一定會跑完才輪到下一次）。實際寫回 DB 延後到
+   * 使用者按「完成」離開排序編輯狀態時才一次做（見 handleToggleReorder）。
+   */
+  const handleMove = (item: WatchlistItem, direction: 'up' | 'down'): void => {
+    const index = items.findIndex((i) => i.id === item.id);
+    if (index === -1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    const reordered = [...items];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setItems(reordered);
+  };
+
+  const handleToggleReorder = async (): Promise<void> => {
+    if (reordering) {
       const db = await getDb();
-      await moveWatchlistItem(db, item.id, direction);
-      const watchlist = await getWatchlist(db);
-      // configureNext 只對「緊接著的下一次」原生 layout commit 有效，中間夾一個 await
-      // 都可能讓這次動畫來不及註冊上或被其他更新搶先消耗掉。這裡刻意不呼叫 reload()，
-      // 改成直接在 setItems 前一行同步呼叫，確保兩者之間沒有任何 await——排序不影響
-      // 報價/上限等其他欄位，也不需要 reload 的其餘步驟
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setItems(watchlist);
-    } finally {
-      setMoving(false);
+      await setWatchlistOrder(
+        db,
+        items.map((item) => item.id),
+      );
     }
+    setReordering((prev) => !prev);
   };
 
   const handleImmediateCheck = async (): Promise<void> => {
@@ -425,7 +429,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
         <PillButton
           label={reordering ? strings.watchlist.reorderDone : strings.watchlist.reorder}
           icon={reordering ? 'checkmark-outline' : 'swap-vertical-outline'}
-          onPress={() => setReordering((prev) => !prev)}
+          onPress={() => void handleToggleReorder()}
           disabled={items.length < 2}
         />
       </View>
@@ -447,11 +451,10 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
             isLast={index === items.length - 1}
             priceInfo={priceInfoByCode[item.stockCode]}
             reordering={reordering}
-            moving={moving}
             strings={strings}
             onPress={() => navigation.navigate('StockDetail', { watchlistId: item.id })}
-            onMoveUp={() => void handleMove(item, 'up')}
-            onMoveDown={() => void handleMove(item, 'down')}
+            onMoveUp={() => handleMove(item, 'up')}
+            onMoveDown={() => handleMove(item, 'down')}
             onEdit={() => navigation.navigate('WatchlistForm', { watchlistId: item.id })}
             onDelete={() => handleDelete(item)}
           />
