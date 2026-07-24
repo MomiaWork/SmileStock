@@ -215,6 +215,11 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
           onPress={handleClaudeAnalyze}
           disabled={analyzing || items.length === 0}
         />
+        <PillButton
+          label={strings.watchlist.notificationHistory}
+          icon="notifications-outline"
+          onPress={() => navigation.navigate('NotificationHistory')}
+        />
       </View>
       <FlatList
         data={items}

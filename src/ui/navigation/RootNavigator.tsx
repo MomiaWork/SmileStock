@@ -2,6 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { useI18n } from '../../i18n';
+import NotificationHistoryScreen from '../screens/NotificationHistoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import StockDetailScreen from '../screens/StockDetailScreen';
 import StrategyRecommendationScreen from '../screens/StrategyRecommendationScreen';
@@ -41,6 +42,11 @@ export default function RootNavigator(): React.JSX.Element {
           name="StrategyRecommendation"
           component={StrategyRecommendationScreen}
           options={{ title: strings.navigation.strategyRecommendationTitle }}
+        />
+        <Stack.Screen
+          name="NotificationHistory"
+          component={NotificationHistoryScreen}
+          options={{ title: strings.navigation.notificationHistoryTitle }}
         />
       </Stack.Navigator>
     </NavigationContainer>

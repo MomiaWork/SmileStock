@@ -32,6 +32,7 @@ export interface Translations {
     noData: string;
     closingSuffix: string;
     budgetLabel: (amount: string) => string;
+    notificationHistory: string;
   };
   watchlistForm: {
     titleAdd: string;
@@ -203,10 +204,15 @@ export interface Translations {
     insufficientData: string;
     lowHigh: (low: number, high: number) => string;
   };
+  notificationHistory: {
+    emptyTitle: string;
+    emptySubtitle: string;
+  };
   navigation: {
     watchlistTitle: string;
     settingsTitle: string;
     strategyRecommendationTitle: string;
+    notificationHistoryTitle: string;
   };
 }
 
@@ -245,6 +251,7 @@ export const zh: Translations = {
     noData: '尚無資料',
     closingSuffix: '收盤',
     budgetLabel: (amount) => `預算 ${amount}`,
+    notificationHistory: '通知記錄',
   },
   watchlistForm: {
     titleAdd: '新增標的',
@@ -443,10 +450,15 @@ export const zh: Translations = {
     insufficientData: '歷史資料不足，無法繪製走勢圖',
     lowHigh: (low, high) => `低 ${low} / 高 ${high}`,
   },
+  notificationHistory: {
+    emptyTitle: '還沒有發送過通知',
+    emptySubtitle: '任何標的策略觸發時都會記錄在這裡',
+  },
   navigation: {
     watchlistTitle: '清單',
     settingsTitle: '設定',
     strategyRecommendationTitle: '策略建議',
+    notificationHistoryTitle: '通知記錄',
   },
 };
 
@@ -487,6 +499,7 @@ export const en: Translations = {
     noData: 'No data',
     closingSuffix: 'close',
     budgetLabel: (amount) => `Budget ${amount}`,
+    notificationHistory: 'Notification History',
   },
   watchlistForm: {
     titleAdd: 'Add Stock',
@@ -693,9 +706,14 @@ export const en: Translations = {
     insufficientData: 'Not enough history to draw a chart',
     lowHigh: (low, high) => `Low ${low} / High ${high}`,
   },
+  notificationHistory: {
+    emptyTitle: 'No notifications sent yet',
+    emptySubtitle: 'Recorded here whenever any stock’s strategy triggers',
+  },
   navigation: {
     watchlistTitle: 'Watchlist',
     settingsTitle: 'Settings',
     strategyRecommendationTitle: 'Strategy Advisor',
+    notificationHistoryTitle: 'Notification History',
   },
 };

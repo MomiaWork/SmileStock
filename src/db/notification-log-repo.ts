@@ -67,3 +67,46 @@ export async function getNotificationHistory(
     sentAt: row.sent_at,
   }));
 }
+
+export interface AllNotificationHistoryEntry extends NotificationHistoryEntry {
+  watchlistId: number;
+  stockCode: string;
+  stockName: string;
+}
+
+/** 通知記錄總覽頁用：所有標的的通知發送紀錄合併在一起，最新的在前面 */
+export async function getAllNotificationHistory(
+  db: SQLiteDatabase,
+  limit = 200,
+): Promise<AllNotificationHistoryEntry[]> {
+  const rows = await db.getAllAsync<{
+    id: number;
+    watchlist_id: number;
+    stock_code: string;
+    stock_name: string;
+    strategy_config_id: number;
+    strategy_type: string;
+    signal_key: string;
+    sent_at: string;
+  }>(
+    `SELECT nl.id, nl.watchlist_id, w.stock_code, w.stock_name,
+            nl.strategy_config_id, sc.type as strategy_type, nl.signal_key, nl.sent_at
+     FROM notification_log nl
+     JOIN strategy_config sc ON sc.id = nl.strategy_config_id
+     JOIN watchlist w ON w.id = nl.watchlist_id
+     ORDER BY nl.sent_at DESC
+     LIMIT ?`,
+    [limit],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    watchlistId: row.watchlist_id,
+    stockCode: row.stock_code,
+    stockName: row.stock_name,
+    strategyConfigId: row.strategy_config_id,
+    strategyType: row.strategy_type,
+    signalKey: row.signal_key,
+    sentAt: row.sent_at,
+  }));
+}

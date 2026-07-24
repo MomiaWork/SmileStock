@@ -26,4 +26,5 @@ export type RootStackParamList = {
   StockDetail: { watchlistId: number };
   Settings: undefined;
   StrategyRecommendation: undefined;
+  NotificationHistory: undefined;
 };
