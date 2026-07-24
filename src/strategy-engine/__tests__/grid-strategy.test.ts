@@ -39,7 +39,7 @@ describe('gridStrategy', () => {
 
   test('依金字塔權重 1:1.5:2:2.5:3 分配每檔建議投入金額', () => {
     const signal = gridStrategy.evaluate(priceAt(88), baseConfig);
-    expect(signal.reason).toContain('1575');
+    expect(signal.amount).toBe(1575);
   });
 
   test('沒有任何價格資料時回傳資料不足', () => {

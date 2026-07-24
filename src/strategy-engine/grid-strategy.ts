@@ -88,7 +88,10 @@ export const gridStrategy: Strategy = {
     const amount = tierAmount(config, deepestTier);
     return {
       triggered: true,
-      reason: `目前價格 ${currentPrice} 已跌破第 ${deepestTier} 檔門檻 ${tierTriggerPrice(config, deepestTier).toFixed(2)}，建議投入約 ${amount.toFixed(0)} 元`,
+      // 這裡只描述「跌破第幾檔門檻」的機械事實，不寫「建議投入」——是否真的建議進場
+      // 要等 entry-advisor 疊加趨勢確認濾網後才能定案，寫在這裡會在濾網判定為「觀望」
+      // 時跟最終建議互相矛盾（觸發文字說投入、結論卻說觀望）
+      reason: `目前價格 ${currentPrice} 已跌破第 ${deepestTier} 檔門檻 ${tierTriggerPrice(config, deepestTier).toFixed(2)}`,
       tierIndex: deepestTier,
       amount,
     };
