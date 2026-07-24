@@ -8,6 +8,7 @@ export interface IconButtonProps {
   onPress: () => void;
   color?: string;
   size?: number;
+  disabled?: boolean;
 }
 
 /** 給導覽列 headerLeft/headerRight 用的圖示按鈕，點擊區域比純圖示大一圈方便觸控 */
@@ -16,11 +17,17 @@ export default function IconButton({
   onPress,
   color = colors.tint,
   size = 22,
+  disabled = false,
 }: IconButtonProps): React.JSX.Element {
   return (
     <Pressable
-      style={({ pressed }) => [styles.hitArea, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.hitArea,
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
+      ]}
       onPress={onPress}
+      disabled={disabled}
       hitSlop={8}
     >
       <Ionicons name={icon} size={size} color={color} />
@@ -34,5 +41,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.5,
+  },
+  disabled: {
+    opacity: 0.25,
   },
 });

@@ -25,6 +25,7 @@ export async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
       stock_name TEXT NOT NULL,
       budget REAL NOT NULL,
       price_check_interval_sec INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -106,6 +107,11 @@ export async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
     'entry_confirm_enabled',
     'entry_confirm_enabled INTEGER NOT NULL DEFAULT 0',
   );
+  // 新裝置由 CREATE TABLE 直接帶 sort_order；已安裝過舊版的裝置補上這欄後全部
+  // 預設 0，排序時用 sort_order 為主、id 為輔（見 watchlist-repo.ts 的 getWatchlist），
+  // 全 0 時等同照舊用 id 排序，不會打亂既有清單順序，使用者按過「上移/下移」後才會
+  // 出現不同的 sort_order 值
+  await ensureColumn(db, 'watchlist', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0');
   await ensureStrategyConfigAllowsPyramid(db);
 }
 

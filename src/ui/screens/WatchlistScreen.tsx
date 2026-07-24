@@ -17,7 +17,12 @@ import { getCurrentPrices, type CurrentPriceInfo } from '../../data-fetch/curren
 import { syncPriceHistory } from '../../data-fetch/price-history-sync';
 import { getDb } from '../../db/schema';
 import { DEFAULT_MAX_WATCHLIST_SIZE, getMaxWatchlistSize } from '../../db/settings-repo';
-import { deleteWatchlistItem, getWatchlist, type WatchlistItem } from '../../db/watchlist-repo';
+import {
+  deleteWatchlistItem,
+  getWatchlist,
+  moveWatchlistItem,
+  type WatchlistItem,
+} from '../../db/watchlist-repo';
 import { runClaudeShortcut, shareStrategyExport } from '../../export/shortcuts-export';
 import { useI18n } from '../../i18n';
 import { requestNotificationPermission } from '../../notifications/local-notification';
@@ -116,6 +121,12 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
         },
       ],
     );
+  };
+
+  const handleMove = async (item: WatchlistItem, direction: 'up' | 'down'): Promise<void> => {
+    const db = await getDb();
+    await moveWatchlistItem(db, item.id, direction);
+    await reload();
   };
 
   const handleImmediateCheck = async (): Promise<void> => {
@@ -232,7 +243,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
             <Text style={styles.emptySubtext}>{strings.watchlist.emptySubtitle}</Text>
           </View>
         }
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const priceInfo = priceInfoByCode[item.stockCode];
           const { changeAmount, changePercent } = priceInfo ?? {
             changeAmount: null,
@@ -283,6 +294,18 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
                   {strings.watchlist.budgetLabel(item.budget.toLocaleString())}
                 </Text>
                 <View style={styles.cardActions}>
+                  <IconButton
+                    icon="chevron-up-outline"
+                    size={18}
+                    disabled={index === 0}
+                    onPress={() => void handleMove(item, 'up')}
+                  />
+                  <IconButton
+                    icon="chevron-down-outline"
+                    size={18}
+                    disabled={index === items.length - 1}
+                    onPress={() => void handleMove(item, 'down')}
+                  />
                   <IconButton
                     icon="pencil-outline"
                     size={18}

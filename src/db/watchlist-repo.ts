@@ -56,9 +56,11 @@ export async function addWatchlistItem(
     throw new Error(`watchlist-repo: 最多只能監控 ${maxSize} 檔標的`);
   }
 
+  // 新項目排在目前清單最後面（不管既有 sort_order 是否已經被「上移/下移」正規化過，
+  // current.length 都會是比既有任何值都大的安全新值），不會打亂使用者手動排過的順序
   const result = await db.runAsync(
-    `INSERT INTO watchlist (stock_code, stock_name, budget, price_check_interval_sec, take_profit_percent, stop_loss_percent, entry_confirm_enabled)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO watchlist (stock_code, stock_name, budget, price_check_interval_sec, take_profit_percent, stop_loss_percent, entry_confirm_enabled, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.stockCode,
       item.stockName,
@@ -67,6 +69,7 @@ export async function addWatchlistItem(
       item.takeProfitPercent ?? null,
       item.stopLossPercent ?? null,
       item.entryConfirmEnabled ? 1 : 0,
+      current.length,
     ],
   );
   return result.lastInsertRowId;
@@ -158,7 +161,7 @@ export async function getWatchlist(db: SQLiteDatabase): Promise<WatchlistItem[]>
     entry_confirm_enabled: number;
   }>(
     `SELECT id, stock_code, stock_name, budget, price_check_interval_sec, take_profit_percent, stop_loss_percent, entry_confirm_enabled
-     FROM watchlist ORDER BY id ASC`,
+     FROM watchlist ORDER BY sort_order ASC, id ASC`,
   );
 
   return rows.map((row) => ({
@@ -171,6 +174,34 @@ export async function getWatchlist(db: SQLiteDatabase): Promise<WatchlistItem[]>
     stopLossPercent: row.stop_loss_percent,
     entryConfirmEnabled: row.entry_confirm_enabled === 1,
   }));
+}
+
+/**
+ * 上移/下移標的順序：先照目前顯示順序（getWatchlist 的排序）算出交換後的新順序，
+ * 再把整份清單的 sort_order 依新順序重新編號（0, 1, 2...）寫回去。整批重新編號
+ * 而不是只交換兩筆的 sort_order，是因為既有資料可能還沒被排序過（全部是 0），
+ * 只交換兩筆不會改變顯示順序。
+ */
+export async function moveWatchlistItem(
+  db: SQLiteDatabase,
+  id: number,
+  direction: 'up' | 'down',
+): Promise<void> {
+  const current = await getWatchlist(db);
+  const index = current.findIndex((item) => item.id === id);
+  if (index === -1) return;
+
+  const targetIndex = direction === 'up' ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= current.length) return;
+
+  const reordered = [...current];
+  [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+
+  await db.withTransactionAsync(async () => {
+    for (let i = 0; i < reordered.length; i += 1) {
+      await db.runAsync(`UPDATE watchlist SET sort_order = ? WHERE id = ?`, [i, reordered[i].id]);
+    }
+  });
 }
 
 function mapStrategyConfigRow(row: {
