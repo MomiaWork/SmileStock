@@ -56,6 +56,7 @@ interface WatchlistCardProps {
   isLast: boolean;
   priceInfo: CurrentPriceInfo | null | undefined;
   reordering: boolean;
+  moving: boolean;
   strings: ReturnType<typeof useI18n>['strings'];
   onPress: () => void;
   onMoveUp: () => void;
@@ -71,6 +72,7 @@ function WatchlistCard({
   isLast,
   priceInfo,
   reordering,
+  moving,
   strings,
   onPress,
   onMoveUp,
@@ -182,13 +184,13 @@ function WatchlistCard({
                 <IconButton
                   icon="chevron-up-outline"
                   size={18}
-                  disabled={index === 0}
+                  disabled={index === 0 || moving}
                   onPress={onMoveUp}
                 />
                 <IconButton
                   icon="chevron-down-outline"
                   size={18}
-                  disabled={isLast}
+                  disabled={isLast || moving}
                   onPress={onMoveDown}
                 />
               </>
@@ -222,6 +224,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   const [sharing, setSharing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [moving, setMoving] = useState(false);
 
   const reload = useCallback(async () => {
     const db = await getDb();
@@ -295,15 +298,26 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   };
 
   const handleMove = async (item: WatchlistItem, direction: 'up' | 'down'): Promise<void> => {
-    const db = await getDb();
-    await moveWatchlistItem(db, item.id, direction);
-    const watchlist = await getWatchlist(db);
-    // configureNext 只對「緊接著的下一次」原生 layout commit 有效，中間夾一個 await
-    // 都可能讓這次動畫來不及註冊上或被其他更新搶先消耗掉（時有時無的成因）。
-    // 這裡刻意不呼叫 reload()，改成直接在 setItems 前一行同步呼叫，確保兩者之間
-    // 沒有任何 await——排序不影響報價/上限等其他欄位，也不需要 reload 的其餘步驟
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setItems(watchlist);
+    // 快速連按（例如同兩個位置來回切換）會讓上一次的 DB 讀寫還沒完成、下一次就
+    // 已經開始：兩次 moveWatchlistItem 各自讀到的「目前順序」可能不一致，算出來的
+    // 結果互相打架，且兩邊各自的 configureNext+setItems 誰先誰後也不確定，導致
+    // 後一次的畫面更新蓋掉前一次還在播的動畫，看起來就像「這次沒有動畫」。
+    // 用 moving 擋住重疊呼叫，等上一次完全結束（DB 寫完、畫面也更新完）才受理下一次
+    if (moving) return;
+    setMoving(true);
+    try {
+      const db = await getDb();
+      await moveWatchlistItem(db, item.id, direction);
+      const watchlist = await getWatchlist(db);
+      // configureNext 只對「緊接著的下一次」原生 layout commit 有效，中間夾一個 await
+      // 都可能讓這次動畫來不及註冊上或被其他更新搶先消耗掉。這裡刻意不呼叫 reload()，
+      // 改成直接在 setItems 前一行同步呼叫，確保兩者之間沒有任何 await——排序不影響
+      // 報價/上限等其他欄位，也不需要 reload 的其餘步驟
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setItems(watchlist);
+    } finally {
+      setMoving(false);
+    }
   };
 
   const handleImmediateCheck = async (): Promise<void> => {
@@ -433,6 +447,7 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
             isLast={index === items.length - 1}
             priceInfo={priceInfoByCode[item.stockCode]}
             reordering={reordering}
+            moving={moving}
             strings={strings}
             onPress={() => navigation.navigate('StockDetail', { watchlistId: item.id })}
             onMoveUp={() => void handleMove(item, 'up')}
