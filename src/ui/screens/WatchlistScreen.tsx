@@ -297,8 +297,13 @@ export default function WatchlistScreen({ navigation }: Props): React.JSX.Elemen
   const handleMove = async (item: WatchlistItem, direction: 'up' | 'down'): Promise<void> => {
     const db = await getDb();
     await moveWatchlistItem(db, item.id, direction);
+    const watchlist = await getWatchlist(db);
+    // configureNext 只對「緊接著的下一次」原生 layout commit 有效，中間夾一個 await
+    // 都可能讓這次動畫來不及註冊上或被其他更新搶先消耗掉（時有時無的成因）。
+    // 這裡刻意不呼叫 reload()，改成直接在 setItems 前一行同步呼叫，確保兩者之間
+    // 沒有任何 await——排序不影響報價/上限等其他欄位，也不需要 reload 的其餘步驟
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    await reload();
+    setItems(watchlist);
   };
 
   const handleImmediateCheck = async (): Promise<void> => {
